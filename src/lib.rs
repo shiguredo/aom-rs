@@ -1989,7 +1989,13 @@ impl Encoder {
                     ));
                 }
             }
-            _ => unreachable!(),
+            _ => {
+                return Err(Error::with_reason(
+                    sys::aom_codec_err_t_AOM_CODEC_INVALID_PARAM,
+                    "shiguredo_aom::Encoder::encode",
+                    "invalid encoder state: image data and plane sizes mismatch",
+                ));
+            }
         }
 
         // フラグ設定
