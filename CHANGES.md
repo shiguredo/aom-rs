@@ -11,5 +11,10 @@
 
 ## develop
 
-- [CHANGE] `EncodedFrame::data()` の戻り値を `&[u8]` から `Result<&[u8], Error>` に変更する
-  - @voluntas
+
+### misc
+
+
+## 2026.1.0
+
+**リリース日**: 2026-03-31
