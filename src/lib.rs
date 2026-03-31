@@ -296,15 +296,21 @@ pub struct DecodedFrame<'a>(&'a sys::aom_image);
 
 impl DecodedFrame<'_> {
     /// デコードされたフレームの画像フォーマットを返す
-    pub fn format(&self) -> ImageFormat {
+    ///
+    /// libaom が未知のフォーマットを返した場合はエラーを返す
+    pub fn format(&self) -> Result<ImageFormat, Error> {
         match self.0.fmt {
-            sys::aom_img_fmt_AOM_IMG_FMT_I420 => ImageFormat::I420,
-            sys::aom_img_fmt_AOM_IMG_FMT_I422 => ImageFormat::I422,
-            sys::aom_img_fmt_AOM_IMG_FMT_I444 => ImageFormat::I444,
-            sys::aom_img_fmt_AOM_IMG_FMT_I42016 => ImageFormat::I42016,
-            sys::aom_img_fmt_AOM_IMG_FMT_I42216 => ImageFormat::I42216,
-            sys::aom_img_fmt_AOM_IMG_FMT_I44416 => ImageFormat::I44416,
-            other => panic!("unexpected image format from libaom decoder: {other}"),
+            sys::aom_img_fmt_AOM_IMG_FMT_I420 => Ok(ImageFormat::I420),
+            sys::aom_img_fmt_AOM_IMG_FMT_I422 => Ok(ImageFormat::I422),
+            sys::aom_img_fmt_AOM_IMG_FMT_I444 => Ok(ImageFormat::I444),
+            sys::aom_img_fmt_AOM_IMG_FMT_I42016 => Ok(ImageFormat::I42016),
+            sys::aom_img_fmt_AOM_IMG_FMT_I42216 => Ok(ImageFormat::I42216),
+            sys::aom_img_fmt_AOM_IMG_FMT_I44416 => Ok(ImageFormat::I44416),
+            _ => Err(Error::with_reason(
+                sys::aom_codec_err_t_AOM_CODEC_ERROR,
+                "shiguredo_aom::DecodedFrame::format",
+                "unexpected image format from libaom decoder",
+            )),
         }
     }
 
@@ -338,49 +344,70 @@ impl DecodedFrame<'_> {
 
     /// プレーンのデータをスライスとして返す
     ///
-    /// stride が負または planes ポインタが NULL の場合はパニックする
-    fn plane(&self, index: usize, height: usize) -> &[u8] {
+    /// stride が正でない、または planes ポインタが NULL の場合はエラーを返す
+    fn plane(&self, index: usize, height: usize) -> Result<&[u8], Error> {
         let ptr = self.0.planes[index];
-        assert!(!ptr.is_null(), "plane {index} pointer is null");
+        if ptr.is_null() {
+            return Err(Error::with_reason(
+                sys::aom_codec_err_t_AOM_CODEC_ERROR,
+                "shiguredo_aom::DecodedFrame::plane",
+                "plane pointer is null",
+            ));
+        }
         let stride = self.0.stride[index];
-        assert!(stride > 0, "plane {index} stride is not positive: {stride}");
-        unsafe { std::slice::from_raw_parts(ptr, height * stride as usize) }
+        if stride <= 0 {
+            return Err(Error::with_reason(
+                sys::aom_codec_err_t_AOM_CODEC_ERROR,
+                "shiguredo_aom::DecodedFrame::plane",
+                "plane stride is not positive",
+            ));
+        }
+        Ok(unsafe { std::slice::from_raw_parts(ptr, height * stride as usize) })
     }
 
     /// フレームの Y 成分のデータを返す
-    pub fn y_plane(&self) -> &[u8] {
+    pub fn y_plane(&self) -> Result<&[u8], Error> {
         self.plane(0, self.0.d_h as usize)
     }
 
     /// フレームの U 成分のデータを返す
-    pub fn u_plane(&self) -> &[u8] {
+    pub fn u_plane(&self) -> Result<&[u8], Error> {
         self.plane(1, self.uv_height())
     }
 
     /// フレームの V 成分のデータを返す
-    pub fn v_plane(&self) -> &[u8] {
+    pub fn v_plane(&self) -> Result<&[u8], Error> {
         self.plane(2, self.uv_height())
     }
 
+    /// プレーンのストライドを返す
+    ///
+    /// stride が正でない場合はエラーを返す
+    fn stride(&self, index: usize) -> Result<usize, Error> {
+        let stride = self.0.stride[index];
+        if stride <= 0 {
+            return Err(Error::with_reason(
+                sys::aom_codec_err_t_AOM_CODEC_ERROR,
+                "shiguredo_aom::DecodedFrame::stride",
+                "plane stride is not positive",
+            ));
+        }
+        Ok(stride as usize)
+    }
+
     /// フレームの Y 成分のストライドを返す
-    pub fn y_stride(&self) -> usize {
-        let stride = self.0.stride[0];
-        assert!(stride > 0, "Y plane stride is not positive: {stride}");
-        stride as usize
+    pub fn y_stride(&self) -> Result<usize, Error> {
+        self.stride(0)
     }
 
     /// フレームの U 成分のストライドを返す
-    pub fn u_stride(&self) -> usize {
-        let stride = self.0.stride[1];
-        assert!(stride > 0, "U plane stride is not positive: {stride}");
-        stride as usize
+    pub fn u_stride(&self) -> Result<usize, Error> {
+        self.stride(1)
     }
 
     /// フレームの V 成分のストライドを返す
-    pub fn v_stride(&self) -> usize {
-        let stride = self.0.stride[2];
-        assert!(stride > 0, "V plane stride is not positive: {stride}");
-        stride as usize
+    pub fn v_stride(&self) -> Result<usize, Error> {
+        self.stride(2)
     }
 
     /// フレームの幅を返す
