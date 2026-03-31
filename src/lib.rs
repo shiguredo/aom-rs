@@ -196,8 +196,9 @@ impl Decoder {
                 0, // flags
                 sys::AOM_DECODER_ABI_VERSION as i32,
             );
+            // 初期化失敗時は ctx が未初期化なので参照してはいけない
+            Error::check(code, "aom_codec_dec_init_ver", None)?;
             let ctx = ctx.assume_init();
-            Error::check(code, "aom_codec_dec_init_ver", Some(&ctx))?;
 
             Ok(Self {
                 ctx,
@@ -295,15 +296,21 @@ pub struct DecodedFrame<'a>(&'a sys::aom_image);
 
 impl DecodedFrame<'_> {
     /// デコードされたフレームの画像フォーマットを返す
-    pub fn format(&self) -> ImageFormat {
+    ///
+    /// libaom が未知のフォーマットを返した場合はエラーを返す
+    pub fn format(&self) -> Result<ImageFormat, Error> {
         match self.0.fmt {
-            sys::aom_img_fmt_AOM_IMG_FMT_I420 => ImageFormat::I420,
-            sys::aom_img_fmt_AOM_IMG_FMT_I422 => ImageFormat::I422,
-            sys::aom_img_fmt_AOM_IMG_FMT_I444 => ImageFormat::I444,
-            sys::aom_img_fmt_AOM_IMG_FMT_I42016 => ImageFormat::I42016,
-            sys::aom_img_fmt_AOM_IMG_FMT_I42216 => ImageFormat::I42216,
-            sys::aom_img_fmt_AOM_IMG_FMT_I44416 => ImageFormat::I44416,
-            other => panic!("unexpected image format from libaom decoder: {other}"),
+            sys::aom_img_fmt_AOM_IMG_FMT_I420 => Ok(ImageFormat::I420),
+            sys::aom_img_fmt_AOM_IMG_FMT_I422 => Ok(ImageFormat::I422),
+            sys::aom_img_fmt_AOM_IMG_FMT_I444 => Ok(ImageFormat::I444),
+            sys::aom_img_fmt_AOM_IMG_FMT_I42016 => Ok(ImageFormat::I42016),
+            sys::aom_img_fmt_AOM_IMG_FMT_I42216 => Ok(ImageFormat::I42216),
+            sys::aom_img_fmt_AOM_IMG_FMT_I44416 => Ok(ImageFormat::I44416),
+            _ => Err(Error::with_reason(
+                sys::aom_codec_err_t_AOM_CODEC_ERROR,
+                "shiguredo_aom::DecodedFrame::format",
+                "unexpected image format from libaom decoder",
+            )),
         }
     }
 
@@ -335,36 +342,87 @@ impl DecodedFrame<'_> {
         }
     }
 
-    /// フレームの Y 成分のデータを返す
-    pub fn y_plane(&self) -> &[u8] {
-        unsafe {
-            std::slice::from_raw_parts(self.0.planes[0], self.0.d_h as usize * self.y_stride())
+    /// プレーンのデータをスライスとして返す
+    ///
+    /// stride が正でない、または planes ポインタが NULL の場合はエラーを返す
+    fn plane(&self, index: usize, height: usize) -> Result<&[u8], Error> {
+        let ptr = self.0.planes[index];
+        if ptr.is_null() {
+            return Err(Error::with_reason(
+                sys::aom_codec_err_t_AOM_CODEC_ERROR,
+                "shiguredo_aom::DecodedFrame::plane",
+                "plane pointer is null",
+            ));
         }
+        let stride = self.0.stride[index];
+        if stride <= 0 {
+            return Err(Error::with_reason(
+                sys::aom_codec_err_t_AOM_CODEC_ERROR,
+                "shiguredo_aom::DecodedFrame::plane",
+                "plane stride is not positive",
+            ));
+        }
+        let stride_usize = stride as usize;
+        let len = height.checked_mul(stride_usize).ok_or_else(|| {
+            Error::with_reason(
+                sys::aom_codec_err_t_AOM_CODEC_ERROR,
+                "shiguredo_aom::DecodedFrame::plane",
+                "plane size overflow: height * stride exceeds usize",
+            )
+        })?;
+        if len > isize::MAX as usize {
+            return Err(Error::with_reason(
+                sys::aom_codec_err_t_AOM_CODEC_ERROR,
+                "shiguredo_aom::DecodedFrame::plane",
+                "plane size exceeds isize::MAX",
+            ));
+        }
+        Ok(unsafe { std::slice::from_raw_parts(ptr, len) })
+    }
+
+    /// フレームの Y 成分のデータを返す
+    pub fn y_plane(&self) -> Result<&[u8], Error> {
+        self.plane(0, self.0.d_h as usize)
     }
 
     /// フレームの U 成分のデータを返す
-    pub fn u_plane(&self) -> &[u8] {
-        unsafe { std::slice::from_raw_parts(self.0.planes[1], self.uv_height() * self.u_stride()) }
+    pub fn u_plane(&self) -> Result<&[u8], Error> {
+        self.plane(1, self.uv_height())
     }
 
     /// フレームの V 成分のデータを返す
-    pub fn v_plane(&self) -> &[u8] {
-        unsafe { std::slice::from_raw_parts(self.0.planes[2], self.uv_height() * self.v_stride()) }
+    pub fn v_plane(&self) -> Result<&[u8], Error> {
+        self.plane(2, self.uv_height())
+    }
+
+    /// プレーンのストライドを返す
+    ///
+    /// stride が正でない場合はエラーを返す
+    fn stride(&self, index: usize) -> Result<usize, Error> {
+        let stride = self.0.stride[index];
+        if stride <= 0 {
+            return Err(Error::with_reason(
+                sys::aom_codec_err_t_AOM_CODEC_ERROR,
+                "shiguredo_aom::DecodedFrame::stride",
+                "plane stride is not positive",
+            ));
+        }
+        Ok(stride as usize)
     }
 
     /// フレームの Y 成分のストライドを返す
-    pub fn y_stride(&self) -> usize {
-        self.0.stride[0] as usize
+    pub fn y_stride(&self) -> Result<usize, Error> {
+        self.stride(0)
     }
 
     /// フレームの U 成分のストライドを返す
-    pub fn u_stride(&self) -> usize {
-        self.0.stride[1] as usize
+    pub fn u_stride(&self) -> Result<usize, Error> {
+        self.stride(1)
     }
 
     /// フレームの V 成分のストライドを返す
-    pub fn v_stride(&self) -> usize {
-        self.0.stride[2] as usize
+    pub fn v_stride(&self) -> Result<usize, Error> {
+        self.stride(2)
     }
 
     /// フレームの幅を返す
@@ -1946,7 +2004,13 @@ impl Encoder {
                     ));
                 }
             }
-            _ => unreachable!(),
+            _ => {
+                return Err(Error::with_reason(
+                    sys::aom_codec_err_t_AOM_CODEC_INVALID_PARAM,
+                    "shiguredo_aom::Encoder::encode",
+                    "invalid encoder state: image data and plane sizes mismatch",
+                ));
+            }
         }
 
         // フラグ設定
@@ -2068,8 +2132,24 @@ pub struct EncodedFrame<'a>(&'a sys::aom_codec_cx_pkt__bindgen_ty_1__bindgen_ty_
 
 impl EncodedFrame<'_> {
     /// 圧縮データ
-    pub fn data(&self) -> &[u8] {
-        unsafe { std::slice::from_raw_parts(self.0.buf as *const u8, self.0.sz) }
+    pub fn data(&self) -> Result<&[u8], Error> {
+        let buf = self.0.buf as *const u8;
+        if buf.is_null() {
+            return Err(Error::with_reason(
+                sys::aom_codec_err_t_AOM_CODEC_ERROR,
+                "shiguredo_aom::EncodedFrame::data",
+                "encoded frame buffer is null",
+            ));
+        }
+        let sz = self.0.sz;
+        if sz > isize::MAX as usize {
+            return Err(Error::with_reason(
+                sys::aom_codec_err_t_AOM_CODEC_ERROR,
+                "shiguredo_aom::EncodedFrame::data",
+                "encoded frame size exceeds isize::MAX",
+            ));
+        }
+        Ok(unsafe { std::slice::from_raw_parts(buf, sz) })
     }
 
     /// キーフレームかどうか
