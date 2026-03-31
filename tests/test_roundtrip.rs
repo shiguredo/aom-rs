@@ -144,13 +144,13 @@ fn encode_frames(config: EncoderConfig, frames: &[(Vec<u8>, Vec<u8>, Vec<u8>)]) 
         let image = ImageData::I420 { y, u, v };
         encoder.encode(&image, &options).expect("failed to encode");
         while let Some(encoded) = encoder.next_frame() {
-            encoded_packets.push(encoded.data().to_vec());
+            encoded_packets.push(encoded.data().expect("failed to get encoded data").to_vec());
         }
     }
 
     encoder.finish().expect("failed to finish");
     while let Some(encoded) = encoder.next_frame() {
-        encoded_packets.push(encoded.data().to_vec());
+        encoded_packets.push(encoded.data().expect("failed to get encoded data").to_vec());
     }
 
     encoded_packets
@@ -410,7 +410,7 @@ fn test_roundtrip_force_keyframe() {
             if encoded.is_keyframe() {
                 keyframe_count += 1;
             }
-            packets.push(encoded.data().to_vec());
+            packets.push(encoded.data().expect("failed to get encoded data").to_vec());
         }
     }
     encoder.finish().expect("failed to finish");
@@ -418,7 +418,7 @@ fn test_roundtrip_force_keyframe() {
         if encoded.is_keyframe() {
             keyframe_count += 1;
         }
-        packets.push(encoded.data().to_vec());
+        packets.push(encoded.data().expect("failed to get encoded data").to_vec());
     }
 
     assert!(

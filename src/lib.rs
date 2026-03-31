@@ -362,7 +362,22 @@ impl DecodedFrame<'_> {
                 "plane stride is not positive",
             ));
         }
-        Ok(unsafe { std::slice::from_raw_parts(ptr, height * stride as usize) })
+        let stride_usize = stride as usize;
+        let len = height.checked_mul(stride_usize).ok_or_else(|| {
+            Error::with_reason(
+                sys::aom_codec_err_t_AOM_CODEC_ERROR,
+                "shiguredo_aom::DecodedFrame::plane",
+                "plane size overflow: height * stride exceeds usize",
+            )
+        })?;
+        if len > isize::MAX as usize {
+            return Err(Error::with_reason(
+                sys::aom_codec_err_t_AOM_CODEC_ERROR,
+                "shiguredo_aom::DecodedFrame::plane",
+                "plane size exceeds isize::MAX",
+            ));
+        }
+        Ok(unsafe { std::slice::from_raw_parts(ptr, len) })
     }
 
     /// フレームの Y 成分のデータを返す
@@ -2117,8 +2132,24 @@ pub struct EncodedFrame<'a>(&'a sys::aom_codec_cx_pkt__bindgen_ty_1__bindgen_ty_
 
 impl EncodedFrame<'_> {
     /// 圧縮データ
-    pub fn data(&self) -> &[u8] {
-        unsafe { std::slice::from_raw_parts(self.0.buf as *const u8, self.0.sz) }
+    pub fn data(&self) -> Result<&[u8], Error> {
+        let buf = self.0.buf as *const u8;
+        if buf.is_null() {
+            return Err(Error::with_reason(
+                sys::aom_codec_err_t_AOM_CODEC_ERROR,
+                "shiguredo_aom::EncodedFrame::data",
+                "encoded frame buffer is null",
+            ));
+        }
+        let sz = self.0.sz;
+        if sz > isize::MAX as usize {
+            return Err(Error::with_reason(
+                sys::aom_codec_err_t_AOM_CODEC_ERROR,
+                "shiguredo_aom::EncodedFrame::data",
+                "encoded frame size exceeds isize::MAX",
+            ));
+        }
+        Ok(unsafe { std::slice::from_raw_parts(buf, sz) })
     }
 
     /// キーフレームかどうか

@@ -10,3 +10,6 @@
   - バグ修正
 
 ## develop
+
+- [CHANGE] `EncodedFrame::data()` の戻り値を `&[u8]` から `Result<&[u8], Error>` に変更する
+  - @voluntas
