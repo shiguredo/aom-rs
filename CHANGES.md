@@ -13,6 +13,8 @@
 
 - [ADD] `Encoder::reconfigure(ReconfigureParams)` を追加してランタイムでエンコード設定を変更できるようにする
   - @voluntas
+- [CHANGE] `ReconfigureParams` から `g_w` / `g_h` / `g_timebase` フィールドを削除する
+  - @voluntas
 
 ### misc
 

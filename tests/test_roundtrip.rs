@@ -1,6 +1,6 @@
 use shiguredo_aom::{
-    AomRational, Decoder, DecoderConfig, EncodeOptions, Encoder, EncoderConfig, ImageData,
-    ImageFormat, RateControlMode, ReconfigureParams, Usage,
+    Decoder, DecoderConfig, EncodeOptions, Encoder, EncoderConfig, ImageData, ImageFormat,
+    RateControlMode, ReconfigureParams, Usage,
 };
 
 // ============================================================================
@@ -574,7 +574,6 @@ fn test_reconfigure_target_bitrate_midstream() {
             encoder
                 .reconfigure(ReconfigureParams {
                     rc_target_bitrate: Some(2000),
-                    ..Default::default()
                 })
                 .expect("failed to reconfigure");
         }
@@ -609,8 +608,6 @@ fn test_reconfigure_immediately_after_new() {
     encoder
         .reconfigure(ReconfigureParams {
             rc_target_bitrate: Some(500),
-            g_timebase: Some(AomRational { num: 1, den: 60 }),
-            ..Default::default()
         })
         .expect("failed to reconfigure");
 }

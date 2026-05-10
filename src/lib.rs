@@ -1249,24 +1249,10 @@ pub struct EncodeOptions {
 /// `Some` を指定したフィールドだけが書き換え対象となる。
 ///
 /// libaom の `aom_codec_enc_config_set()` で変更可能なフィールドのうち、
-/// 帯域適応用途で典型的に必要となるものを公開している。
-/// 解像度を変更する場合は、エンコーダー初期化時に
-/// [`EncoderConfig::g_forced_max_frame_width`] /
-/// [`EncoderConfig::g_forced_max_frame_height`] を設定しておく必要がある。
+/// ランタイム変更が安全なものを公開している。libwebrtc の AV1 エンコーダー実装に倣い、
+/// timebase は初期化時に固定し、ランタイムでは動かさない方針を採る。
 #[derive(Debug, Clone, Default)]
 pub struct ReconfigureParams {
-    /// エンコード幅 (libaom: `g_w`)
-    ///
-    /// `g_forced_max_frame_width` を超えてはならない
-    pub g_w: Option<u32>,
-    /// エンコード高さ (libaom: `g_h`)
-    ///
-    /// `g_forced_max_frame_height` を超えてはならない
-    pub g_h: Option<u32>,
-    /// タイムベース (libaom: `g_timebase`)
-    ///
-    /// 例: 30fps の場合 `AomRational { num: 1, den: 30 }`
-    pub g_timebase: Option<AomRational>,
     /// ターゲットビットレート (kbps 単位, libaom: `rc_target_bitrate`)
     pub rc_target_bitrate: Option<u32>,
 }
@@ -1985,11 +1971,6 @@ impl Encoder {
     ///
     /// `params` で `Some` が指定されたフィールドのみを書き換え、
     /// libaom の `aom_codec_enc_config_set()` を呼び出して反映する。
-    ///
-    /// 解像度 (`g_w` / `g_h`) を変更する場合は、エンコーダー初期化時に
-    /// [`EncoderConfig::g_forced_max_frame_width`] /
-    /// [`EncoderConfig::g_forced_max_frame_height`] を指定しておく必要がある。
-    /// 値がそれを超えるか libaom の制約に違反すると、エラーが返される。
     pub fn reconfigure(&mut self, params: ReconfigureParams) -> Result<(), Error> {
         if !self.iter.is_null() {
             return Err(Error::with_reason(
@@ -1999,16 +1980,6 @@ impl Encoder {
             ));
         }
 
-        if let Some(v) = params.g_w {
-            self.cfg.g_w = v as _;
-        }
-        if let Some(v) = params.g_h {
-            self.cfg.g_h = v as _;
-        }
-        if let Some(v) = params.g_timebase {
-            self.cfg.g_timebase.num = v.num as c_int;
-            self.cfg.g_timebase.den = v.den as c_int;
-        }
         if let Some(v) = params.rc_target_bitrate {
             self.cfg.rc_target_bitrate = v as _;
         }

@@ -1,6 +1,7 @@
 # ReconfigureParams から g_w / g_h / g_timebase を削除する
 
 Created: 2026-05-10
+Completed: 2026-05-10
 Model: deepseek v4-pro
 
 ## 概要
@@ -124,3 +125,13 @@ if let Some(v) = params.g_timebase {
 - **0011** (`misc-cleanup-reconfigure-code`) の doc 重複削除は本 issue の修正内容と重複する可能性がある。0006 を先に適用し、0011 は 0006 の適用後内容に対して適用する
 - **0012** (`enh-add-libwebrtc-style-reconfigure`) は本 issue で `g_timebase` 削除が完了した後の doc / example 整備を担う。0006 → 0012 の順で適用する
 - **0013** (`enh-add-svc-runtime-control`, `issues/pending/`) は SVC 統合の設計判断が必要なため pending。本 issue とは独立
+
+## 解決方法
+
+`src/lib.rs` の `ReconfigureParams` から `g_w` / `g_h` / `g_timebase` フィールドと関連 doc を削除し、`Encoder::reconfigure()` 内の対応する代入ブロックも削除した。`reconfigure()` の doc コメントから解像度変更前提の注意書きも除去した。
+
+`tests/test_roundtrip.rs` から `AomRational` import および `g_timebase` を渡している記述を削除し、`..Default::default()` が無意味になった箇所も整理した。
+
+`CHANGES.md` の `## develop` に `[CHANGE]` エントリを追記した。
+
+`cargo test`、`cargo clippy --all-targets --all-features -- -D warnings` がいずれも通過することを確認した。
