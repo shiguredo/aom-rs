@@ -623,3 +623,54 @@ fn test_reconfigure_empty_params_is_noop() {
         .reconfigure(ReconfigureParams::default())
         .expect("failed to reconfigure");
 }
+
+/// reconfigure が libaom 検証で失敗した場合でも、後続の reconfigure と encode が
+/// 失敗前の設定で正常動作することを確認する
+///
+/// libaom の `rc_target_bitrate` 上限は 2,000,000 kbps なので、これを超える値で
+/// 失敗を発生させる
+#[test]
+fn test_reconfigure_state_unchanged_on_failure() {
+    let width = 320;
+    let height = 240;
+    let config = realtime_config(width, height, RateControlMode::Cbr);
+    let mut encoder = Encoder::new(config).expect("failed to create encoder");
+    let options = EncodeOptions {
+        force_keyframe: false,
+    };
+
+    let err = encoder
+        .reconfigure(ReconfigureParams {
+            rc_target_bitrate: Some(2_000_001),
+        })
+        .expect_err("expected reconfigure to fail with out-of-range bitrate");
+    assert!(format!("{err:?}").contains("aom_codec_enc_config_set"));
+
+    // 失敗後も妥当な値での reconfigure が成功し、エンコードまで完走することを確認する
+    encoder
+        .reconfigure(ReconfigureParams {
+            rc_target_bitrate: Some(1500),
+        })
+        .expect("reconfigure with valid bitrate should succeed after a failed call");
+
+    let mut packets: Vec<Vec<u8>> = Vec::new();
+    for i in 0..3 {
+        let (y, u, v) = generate_dummy_i420(width as usize, height as usize, i);
+        let image = ImageData::I420 {
+            y: &y,
+            u: &u,
+            v: &v,
+        };
+        encoder.encode(&image, &options).expect("failed to encode");
+        while let Some(encoded) = encoder.next_frame() {
+            packets.push(encoded.data().expect("failed to get encoded data").to_vec());
+        }
+    }
+    encoder.finish().expect("failed to finish");
+    while let Some(encoded) = encoder.next_frame() {
+        packets.push(encoded.data().expect("failed to get encoded data").to_vec());
+    }
+
+    let decoded = decode_frames(&packets);
+    assert_eq!(decoded.len(), 3);
+}

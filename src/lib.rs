@@ -1980,12 +1980,19 @@ impl Encoder {
             ));
         }
 
+        // aom_codec_enc_cfg は bindgen 生成型で Copy が derive されないため、
+        // ポインタやリソースを持たない POD であることを前提に bit copy する
+        let mut cfg: sys::aom_codec_enc_cfg = unsafe { std::ptr::read(&self.cfg) };
+
         if let Some(v) = params.rc_target_bitrate {
-            self.cfg.rc_target_bitrate = v as _;
+            cfg.rc_target_bitrate = v as _;
         }
 
-        let code = unsafe { sys::aom_codec_enc_config_set(&mut self.ctx, &self.cfg) };
+        let code = unsafe { sys::aom_codec_enc_config_set(&mut self.ctx, &cfg) };
         Error::check(code, "aom_codec_enc_config_set", Some(&self.ctx))?;
+
+        // aom_codec_enc_config_set が成功した場合のみ self.cfg を更新する
+        self.cfg = cfg;
         Ok(())
     }
 

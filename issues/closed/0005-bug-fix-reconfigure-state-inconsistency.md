@@ -1,6 +1,7 @@
 # reconfigure() 失敗時に self.cfg と libaom 実状態が乖離する
 
 Created: 2026-05-10
+Completed: 2026-05-10
 Model: deepseek v4-pro
 
 ## 概要
@@ -91,3 +92,11 @@ fn test_reconfigure_state_unchanged_on_failure() {
 ## 後方互換
 
 内部実装の修正のみ。`reconfigure()` のシグネチャ・公開 API は変更なし。
+
+## 解決方法
+
+`Encoder::reconfigure()` を、`std::ptr::read` で `self.cfg` をビット複製してローカル `cfg` を作り、`Some` 指定フィールドはローカル `cfg` 側だけを書き換えるよう変更した。`aom_codec_enc_config_set()` が成功した場合のみ `self.cfg = cfg` で差し替えるため、libaom 検証で失敗しても `self.cfg` は変更前の値のまま保たれる。
+
+`tests/test_roundtrip.rs` に `test_reconfigure_state_unchanged_on_failure` を追加した。`rc_target_bitrate` の libaom 上限 (2,000,000 kbps) を超える `2_000_001` を渡して `reconfigure()` を失敗させたあと、妥当な値での再 `reconfigure` と数フレームの encode / decode が完走することを検証している。
+
+`CHANGES.md` の `## develop` に `[FIX]` エントリを `[CHANGE]` の後に追加した。`cargo test`、`cargo clippy --all-targets --all-features -- -D warnings` の通過を確認した。
