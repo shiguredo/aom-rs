@@ -22,6 +22,11 @@
 
 ### misc
 
+- `Encoder::reconfigure()` の doc コメントに libwebrtc 方式の運用方針 (エンコーダーを破棄せず本メソッドで更新する / timebase 固定運用 / 将来 SVC 拡張時の順序制約) を追記する
+  - @voluntas
+- `examples/midstream_reconfigure.rs` を追加し、30fps エンコード途中でビットレートを切り替える典型パターンを示す
+  - @voluntas
+
 
 ## 2026.1.0
 

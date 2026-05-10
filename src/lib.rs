@@ -1967,6 +1967,25 @@ impl Encoder {
     ///
     /// `params` で `Some` が指定されたフィールドのみを書き換え、
     /// libaom の `aom_codec_enc_config_set()` を呼び出して反映する。
+    ///
+    /// # 推奨運用
+    ///
+    /// libwebrtc の AV1 エンコーダー実装 (`LibaomAv1Encoder::SetRates`) と同じく、
+    /// ランタイム中はエンコーダーを破棄せず本メソッドで設定を更新するのが推奨運用となる。
+    /// `Encoder::new()` を再生成するとシーケンスが切れるため、帯域適応用途では使えない。
+    ///
+    /// タイムベース (`g_timebase`) は libwebrtc に倣い初期化時に固定し、ランタイムでは
+    /// 触らない方針を採っているため [`ReconfigureParams`] からは外している。現状の
+    /// [`Encoder::encode()`] は libaom 呼び出し時の `duration` を 1 に固定するため、
+    /// [`EncoderConfig::g_timebase`] は想定フレームレートに合わせて設定すること
+    /// (例: 30fps なら `AomRational { num: 1, den: 30 }`)。
+    ///
+    /// # 将来の SVC 拡張
+    ///
+    /// 将来 SVC レイヤー制御 (`AV1E_SET_SVC_PARAMS`) を本メソッド経由で扱うことになった場合、
+    /// libwebrtc の実装コメントに倣い「総ビットレートを先に更新してから SVC params を
+    /// 更新する」順序制約を踏襲する必要がある。詳細設計は
+    /// `issues/pending/0013-enh-add-svc-runtime-control.md` を参照。
     pub fn reconfigure(&mut self, params: ReconfigureParams) -> Result<(), Error> {
         self.check_iter_drained("shiguredo_aom::Encoder::reconfigure")?;
 

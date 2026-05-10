@@ -1,6 +1,7 @@
 # libwebrtc スタイルのランタイム再設定運用を整える
 
 Created: 2026-05-10
+Completed: 2026-05-10
 Model: Opus 4.7
 
 ## 概要
@@ -63,3 +64,18 @@ WebRTC / SFU で aom-rs を使う場合、libwebrtc と同じ運用パターン�
 - libaom `aom_codec_enc_config_set`
 - 既存実装 `Encoder::reconfigure` (`src/lib.rs` 1993-2019)
 - 関連 issue: `0006-bug-remove-gw-gh-from-reconfigure.md`, `pending/0013-enh-add-svc-runtime-control.md`
+
+## 解決方法
+
+`src/lib.rs` の `Encoder::reconfigure()` doc コメントに libwebrtc 方式の運用方針を追記した。
+
+- エンコーダーを破棄せず本メソッドで設定を更新するのが推奨運用 (libwebrtc `LibaomAv1Encoder::SetRates` と同じパターン)
+- `g_timebase` は初期化時に固定し、ランタイムでは触らない方針 (`ReconfigureParams` から既に外している)
+- 現状の `Encoder::encode()` が libaom 呼び出し時に `duration = 1` を固定で渡すため、`EncoderConfig::g_timebase` は想定フレームレートに合わせて設定する必要がある (例: 30fps なら `{1, 30}`)。設計方針で 0012 が想定していた `{1, 90000}` の固定運用は、現状 API では duration を制御できないため適用しないことを明記した
+- 将来 SVC レイヤー制御 (`AV1E_SET_SVC_PARAMS`) を扱う場合、libwebrtc のコメント由来の「総ビットレートを先に更新してから SVC params を更新する」順序制約を踏襲する旨を doc に残した
+
+`examples/midstream_reconfigure.rs` を新規追加し、30fps エンコード途中でビットレートを 500→2000 kbps に切り替える典型パターンを示した。タイムベース `{1, 30}` を初期化時に固定したまま、`Encoder::reconfigure(ReconfigureParams { rc_target_bitrate: ... })` だけで動的変更する流れになっている。
+
+`CHANGES.md` の `## develop` の `### misc` サブセクションに doc 追記と example 追加のエントリを追加した。
+
+`cargo test`、`cargo clippy --all-targets --all-features -- -D warnings`、`cargo run --example midstream_reconfigure` の通過を確認した。
