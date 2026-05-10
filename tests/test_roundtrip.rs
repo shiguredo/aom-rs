@@ -1,6 +1,6 @@
 use shiguredo_aom::{
-    Decoder, DecoderConfig, EncodeOptions, Encoder, EncoderConfig, ImageData, ImageFormat,
-    RateControlMode, Usage,
+    AomRational, Decoder, DecoderConfig, EncodeOptions, Encoder, EncoderConfig, ImageData,
+    ImageFormat, RateControlMode, ReconfigureParams, Usage,
 };
 
 // ============================================================================
@@ -546,4 +546,83 @@ fn test_supported_codecs() {
             panic!("エンコードプロファイルが Unsupported になっている");
         }
     }
+}
+
+// ============================================================================
+// reconfigure テスト
+// ============================================================================
+
+/// エンコード途中で reconfigure を呼んでビットレートを変更しても
+/// エンコード・デコードがエラーなく完走することを確認する
+#[test]
+fn test_reconfigure_target_bitrate_midstream() {
+    let width = 320;
+    let height = 240;
+    let num_frames = 12;
+
+    let config = realtime_config(width, height, RateControlMode::Cbr);
+
+    let mut encoder = Encoder::new(config).expect("failed to create encoder");
+    let options = EncodeOptions {
+        force_keyframe: false,
+    };
+    let mut packets: Vec<Vec<u8>> = Vec::new();
+
+    for i in 0..num_frames {
+        // フレーム途中でビットレートを倍にする
+        if i == num_frames / 2 {
+            encoder
+                .reconfigure(ReconfigureParams {
+                    rc_target_bitrate: Some(2000),
+                    ..Default::default()
+                })
+                .expect("failed to reconfigure");
+        }
+
+        let (y, u, v) = generate_dummy_i420(width as usize, height as usize, i);
+        let image = ImageData::I420 {
+            y: &y,
+            u: &u,
+            v: &v,
+        };
+        encoder.encode(&image, &options).expect("failed to encode");
+        while let Some(encoded) = encoder.next_frame() {
+            packets.push(encoded.data().expect("failed to get encoded data").to_vec());
+        }
+    }
+
+    encoder.finish().expect("failed to finish");
+    while let Some(encoded) = encoder.next_frame() {
+        packets.push(encoded.data().expect("failed to get encoded data").to_vec());
+    }
+
+    let decoded = decode_frames(&packets);
+    assert_eq!(decoded.len(), num_frames);
+}
+
+/// `Encoder::new` 直後に reconfigure を呼んでも成功することを確認する
+#[test]
+fn test_reconfigure_immediately_after_new() {
+    let config = realtime_config(320, 240, RateControlMode::Cbr);
+    let mut encoder = Encoder::new(config).expect("failed to create encoder");
+
+    encoder
+        .reconfigure(ReconfigureParams {
+            rc_target_bitrate: Some(500),
+            g_timebase: Some(AomRational { num: 1, den: 60 }),
+            ..Default::default()
+        })
+        .expect("failed to reconfigure");
+}
+
+/// 空の `ReconfigureParams` で呼んでも成功する
+/// (内部設定は変わらず、`aom_codec_enc_config_set` が同じ値で呼ばれるだけ)
+#[test]
+fn test_reconfigure_empty_params_is_noop() {
+    let config = realtime_config(320, 240, RateControlMode::Cbr);
+    let mut encoder = Encoder::new(config).expect("failed to create encoder");
+
+    encoder
+        .reconfigure(ReconfigureParams::default())
+        .expect("failed to reconfigure");
 }

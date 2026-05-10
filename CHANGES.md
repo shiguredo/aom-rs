@@ -11,6 +11,8 @@
 
 ## develop
 
+- [ADD] `Encoder::reconfigure(ReconfigureParams)` を追加してランタイムでエンコード設定を変更できるようにする
+  - @voluntas
 
 ### misc
 
