@@ -122,4 +122,5 @@ if let Some(v) = params.g_timebase {
 - **0007** (`bug-validate-reconfigure-den-zero`) は本 issue のスコープ拡張により不要となり close 済み（`issues/closed/0007-...`）
 - **0010** (`enh-remove-reconfigure-default-derive`) も `ReconfigureParams` 構造体定義を操作するため、本 issue (0006) を先に適用する必要がある
 - **0011** (`misc-cleanup-reconfigure-code`) の doc 重複削除は本 issue の修正内容と重複する可能性がある。0006 を先に適用し、0011 は 0006 の適用後内容に対して適用する
-- **0012** (`enh-add-libwebrtc-style-reconfigure`) は本 issue が前提とする libwebrtc 方式の API 拡張を扱う。0006 → 0012 の順で適用する
+- **0012** (`enh-add-libwebrtc-style-reconfigure`) は本 issue で `g_timebase` 削除が完了した後の doc / example 整備を担う。0006 → 0012 の順で適用する
+- **0013** (`enh-add-svc-runtime-control`, `issues/pending/`) は SVC 統合の設計判断が必要なため pending。本 issue とは独立
