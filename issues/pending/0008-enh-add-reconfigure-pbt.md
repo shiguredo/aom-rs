@@ -3,6 +3,10 @@
 Created: 2026-05-10
 Model: deepseek-v4-pro
 
+## Pending 理由
+
+本 issue は AGENTS.md (CLAUDE.md) に存在した「PBT(Property-Based Testing) や Fuzzing で必ずテストを行うこと」「unittest は pbt で実現できないものだけを書く」というルールを根拠に作成された。しかしその後 AGENTS.md からこれらのルールおよび `## テストについて` / `## Rust` 節が削除されている (2026-05-10)。前提ルールが失われたため、本 issue の「PBT を新規導入する」という結論は再検討が必要であり、いったん `pending` に置く。再開時は (a) PBT を導入するか (b) 既存の単体テスト・回帰テストで十分とするかを判断したうえで設計を更新する。
+
 ## 概要
 
 CLAUDE.md に「PBT(Property-Based Testing) や Fuzzing で必ずテストを行う」「unittest は pbt で実現できないものだけを書く」と明記されているが、reconfigure の PBT テストが 0 件である。プロジェクト全体でも `pbt/` ディレクトリが存在しない。
