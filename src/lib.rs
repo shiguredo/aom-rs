@@ -1247,10 +1247,6 @@ pub struct EncodeOptions {
 ///
 /// [`Encoder::reconfigure()`] でランタイムに変更可能なフィールドを保持する。
 /// `Some` を指定したフィールドだけが書き換え対象となる。
-///
-/// libaom の `aom_codec_enc_config_set()` で変更可能なフィールドのうち、
-/// ランタイム変更が安全なものを公開している。libwebrtc の AV1 エンコーダー実装に倣い、
-/// timebase は初期化時に固定し、ランタイムでは動かさない方針を採る。
 #[derive(Debug, Clone)]
 pub struct ReconfigureParams {
     /// ターゲットビットレート (kbps 単位, libaom: `rc_target_bitrate`)
@@ -1972,13 +1968,7 @@ impl Encoder {
     /// `params` で `Some` が指定されたフィールドのみを書き換え、
     /// libaom の `aom_codec_enc_config_set()` を呼び出して反映する。
     pub fn reconfigure(&mut self, params: ReconfigureParams) -> Result<(), Error> {
-        if !self.iter.is_null() {
-            return Err(Error::with_reason(
-                sys::aom_codec_err_t_AOM_CODEC_ERROR,
-                "shiguredo_aom::Encoder::reconfigure",
-                "still need to call shiguredo_aom::Encoder::next_frame()",
-            ));
-        }
+        self.check_iter_drained("shiguredo_aom::Encoder::reconfigure")?;
 
         // aom_codec_enc_cfg は bindgen 生成型で Copy が derive されないため、
         // ポインタやリソースを持たない POD であることを前提に bit copy する
@@ -2002,13 +1992,7 @@ impl Encoder {
     ///
     /// `image` のフォーマットはエンコーダー初期化時に指定した `ImageFormat` と一致する必要がある
     pub fn encode(&mut self, image: &ImageData<'_>, options: &EncodeOptions) -> Result<(), Error> {
-        if !self.iter.is_null() {
-            return Err(Error::with_reason(
-                sys::aom_codec_err_t_AOM_CODEC_ERROR,
-                "shiguredo_aom::Encoder::encode",
-                "still need to call shiguredo_aom::Encoder::next_frame()",
-            ));
-        }
+        self.check_iter_drained("shiguredo_aom::Encoder::encode")?;
 
         // フォーマット整合性チェック
         if image.format() != self.image_format {
@@ -2109,13 +2093,7 @@ impl Encoder {
     ///
     /// 残りのエンコード結果は [`Encoder::next_frame()`] で取得できる
     pub fn finish(&mut self) -> Result<(), Error> {
-        if !self.iter.is_null() {
-            return Err(Error::with_reason(
-                sys::aom_codec_err_t_AOM_CODEC_ERROR,
-                "shiguredo_aom::Encoder::finish",
-                "still need to call shiguredo_aom::Encoder::next_frame()",
-            ));
-        }
+        self.check_iter_drained("shiguredo_aom::Encoder::finish")?;
 
         let code = unsafe {
             sys::aom_codec_encode(
@@ -2127,6 +2105,21 @@ impl Encoder {
             )
         };
         Error::check(code, "aom_codec_encode", Some(&self.ctx))?;
+        Ok(())
+    }
+
+    /// `next_frame()` の取り出しが完了していることを確認する
+    ///
+    /// `encode()` / `finish()` / `reconfigure()` は `next_frame()` の取り出し中
+    /// (`self.iter` が非 NULL) には呼べない。共通のガード処理として抽出している。
+    fn check_iter_drained(&self, function: &'static str) -> Result<(), Error> {
+        if !self.iter.is_null() {
+            return Err(Error::with_reason(
+                sys::aom_codec_err_t_AOM_CODEC_ERROR,
+                function,
+                "still need to call shiguredo_aom::Encoder::next_frame()",
+            ));
+        }
         Ok(())
     }
 

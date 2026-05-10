@@ -1,6 +1,7 @@
 # reconfigure 関連コードのクリーンアップ
 
 Created: 2026-05-10
+Completed: 2026-05-10
 Model: deepseek-v4-pro
 
 ## 概要
@@ -69,3 +70,26 @@ Issue 0004 の設計セクションでは `rc_target_bitrate` のみとされて
 ## 参考
 
 - レビュー指摘: `feature/encoder-reconfigure` ブランチの `/review-diff-code` 結果より（削除候補検出, 改善提案 5.3, 5.5, 5.6, 整合性指摘 7, および設計指摘 2）
+
+## 解決方法
+
+`src/lib.rs`:
+
+- `ReconfigureParams` 構造体 doc から「libaom の `aom_codec_enc_config_set()` で変更可能なフィールドのうち、ランタイム変更が安全なものを公開している。…」以降の設計判断記述を削除した (API doc には不要、issue 側に既述)
+- `Encoder` に `check_iter_drained(&self, function: &'static str) -> Result<(), Error>` ヘルパーを追加し、`encode()` / `finish()` / `reconfigure()` 3 箇所で重複していた `iter.is_null()` ガードを置き換えた
+- 0006 で `g_w` / `g_h` 関連の doc 重複は既に解消済み
+
+`tests/test_roundtrip.rs`:
+
+- `test_reconfigure_target_bitrate_midstream` 内の自明コメント `// フレーム途中でビットレートを倍にする` を削除した
+- もう 1 件 (`test_reconfigure_empty_params_is_noop` の `/// (内部設定は変わらず、…)`) は 0009 のテスト整理で当該テスト自体が `test_reconfigure_empty_params_then_encode` に置き換わり、自明コメントは残っていない
+
+`CHANGES.md`:
+
+- `## develop` の `[ADD]` エントリを規約 (「変更内容を〜するという形で書く」) に揃え `Encoder::reconfigure(ReconfigureParams)` を追加する に簡潔化した
+
+`issues/closed/0004-feature-add-encoder-reconfigure.md`:
+
+- 解決方法に、初期実装で `g_w` / `g_h` / `g_timebase` を追加した経緯と 0006 で削除された旨を追記した
+
+`cargo test`、`cargo clippy --all-targets --all-features -- -D warnings` がいずれも通過することを確認した。

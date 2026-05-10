@@ -69,6 +69,7 @@ impl Encoder {
 `src/lib.rs` に以下を追加した。
 
 - `ReconfigureParams` 構造体: `g_w`, `g_h`, `g_timebase`, `rc_target_bitrate` を `Option` で持つ
+  - 設計セクションでは `rc_target_bitrate` のみ公開する方針だったが、ランタイムでの解像度・タイムベース変更も含めて libaom 側 API に揃えるため初期実装では追加していた。これらは後に 0006 で削除されている (`g_w` / `g_h` は内部 `plane_sizes` / `aom_image` バッファが追従しない、`g_timebase` は libwebrtc に倣い固定運用とする方針のため)
 - `Encoder` 構造体に `cfg: sys::aom_codec_enc_cfg` フィールドを追加し、初期化時の cfg を保持する
 - `Encoder::reconfigure(&mut self, params: ReconfigureParams)`: `Some` のフィールドのみを self.cfg に書き戻し、`aom_codec_enc_config_set()` で適用する
   - エンコード結果取り出し中 (`iter` が非 NULL) は呼べない (`encode` / `finish` と同じガード)

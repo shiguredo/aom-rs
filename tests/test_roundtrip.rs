@@ -569,7 +569,6 @@ fn test_reconfigure_target_bitrate_midstream() {
     let mut packets: Vec<Vec<u8>> = Vec::new();
 
     for i in 0..num_frames {
-        // フレーム途中でビットレートを倍にする
         if i == num_frames / 2 {
             encoder
                 .reconfigure(ReconfigureParams {
