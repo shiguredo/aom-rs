@@ -15,6 +15,8 @@
   - @voluntas
 - [CHANGE] `ReconfigureParams` から `g_w` / `g_h` / `g_timebase` フィールドを削除する
   - @voluntas
+- [CHANGE] `ReconfigureParams` から `Default` derive を撤廃する
+  - @voluntas
 - [FIX] `Encoder::reconfigure()` の libaom 呼び出し失敗時に内部 `cfg` が変更前のまま保持されるよう修正する
   - @voluntas
 

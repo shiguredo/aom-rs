@@ -1251,7 +1251,7 @@ pub struct EncodeOptions {
 /// libaom の `aom_codec_enc_config_set()` で変更可能なフィールドのうち、
 /// ランタイム変更が安全なものを公開している。libwebrtc の AV1 エンコーダー実装に倣い、
 /// timebase は初期化時に固定し、ランタイムでは動かさない方針を採る。
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct ReconfigureParams {
     /// ターゲットビットレート (kbps 単位, libaom: `rc_target_bitrate`)
     pub rc_target_bitrate: Option<u32>,

@@ -1,6 +1,7 @@
 # ReconfigureParams の Default derive を撤廃する
 
 Created: 2026-05-10
+Completed: 2026-05-10
 Model: deepseek-v4-pro
 
 ## 概要
@@ -47,3 +48,11 @@ impl ReconfigureParams {
 ## 参考
 
 - レビュー指摘: `feature/encoder-reconfigure` ブランチの `/review-diff-code` 結果より（設計指摘 6, 改善提案 5.1）
+
+## 解決方法
+
+`src/lib.rs` の `ReconfigureParams` から `#[derive(Default)]` を撤廃した（`Debug, Clone` のみ残す）。手動 `Default` 実装も追加していない。
+
+`tests/test_roundtrip.rs` の `test_reconfigure_empty_params_then_encode` で使用していた `ReconfigureParams::default()` を `ReconfigureParams { rc_target_bitrate: None }` に書き換えた。
+
+`CHANGES.md` の `## develop` に `[CHANGE]` エントリを追加した。`cargo test`、`cargo clippy --all-targets --all-features -- -D warnings` がいずれも通過することを確認した。

@@ -649,7 +649,9 @@ fn test_reconfigure_empty_params_then_encode() {
     let mut encoder = Encoder::new(config).expect("failed to create encoder");
 
     encoder
-        .reconfigure(ReconfigureParams::default())
+        .reconfigure(ReconfigureParams {
+            rc_target_bitrate: None,
+        })
         .expect("failed to reconfigure");
 
     let options = EncodeOptions {
