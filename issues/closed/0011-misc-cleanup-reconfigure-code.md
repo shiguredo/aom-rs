@@ -2,7 +2,7 @@
 
 Created: 2026-05-10
 Completed: 2026-05-10
-Model: deepseek-v4-pro
+Model: DeepSeek v4-pro
 
 ## 概要
 
@@ -93,3 +93,11 @@ Issue 0004 の設計セクションでは `rc_target_bitrate` のみとされて
 - 解決方法に、初期実装で `g_w` / `g_h` / `g_timebase` を追加した経緯と 0006 で削除された旨を追記した
 
 `cargo test`、`cargo clippy --all-targets --all-features -- -D warnings` がいずれも通過することを確認した。
+
+## 振り返り
+
+本 issue で対応した内容 (doc 重複削除 / `check_iter_drained` ヘルパー抽出 / CHANGES.md 文言整え / `test_reconfigure_target_bitrate_midstream` の自明コメント削除) は、すべて 0004 の実装段階で押さえておくべき初歩的なコード品質項目だった。
+
+特に `iter.is_null()` ガードの 3 メソッド重複は最初のコードを書いた段階で気づける典型的なコピペで、ヘルパー抽出は別 issue を切らずに 0004 の中で完結すべきだった。
+
+教訓: 機能追加 issue (0004) で「コードレビュー観点」(コピペ / 重複 doc / 自明コメント / CHANGES.md 文言) を別 issue に分けて持ち越すと、PR / コミット数が無駄に増えるだけでなく、上流の修正と二重メンテになる (本 issue の `test_reconfigure_empty_params_is_noop` のコメント削除は 0009 のテスト整理で対象自体が消えてしまった)。0004 の段階で完結させる。

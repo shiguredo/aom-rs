@@ -19,8 +19,8 @@ use shiguredo_aom::{
 const WIDTH: u32 = 320;
 const HEIGHT: u32 = 240;
 const FPS_DEN: i32 = 30;
-const NUM_FRAMES: usize = 60;
-const SWITCH_AT: usize = 30;
+const NUM_FRAMES: usize = 120;
+const SWITCH_AT: usize = 60;
 const INITIAL_BITRATE_KBPS: u32 = 500;
 const SWITCHED_BITRATE_KBPS: u32 = 2000;
 
@@ -44,8 +44,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let y_size = (WIDTH * HEIGHT) as usize;
     let uv_size = (WIDTH.div_ceil(2) * HEIGHT.div_ceil(2)) as usize;
 
-    let mut total_bytes = [0usize; 2];
-    let mut total_frames = [0usize; 2];
+    let mut total_bytes: u64 = 0;
+    let mut total_frames: u64 = 0;
 
     for i in 0..NUM_FRAMES {
         if i == SWITCH_AT {
@@ -67,32 +67,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
         encoder.encode(&image, &options)?;
 
-        let segment = if i < SWITCH_AT { 0 } else { 1 };
         while let Some(encoded) = encoder.next_frame() {
-            let bytes = encoded.data()?.len();
-            total_bytes[segment] += bytes;
-            total_frames[segment] += 1;
+            total_bytes += encoded.data()?.len() as u64;
+            total_frames += 1;
         }
     }
 
     encoder.finish()?;
     while let Some(encoded) = encoder.next_frame() {
-        let bytes = encoded.data()?.len();
-        total_bytes[1] += bytes;
-        total_frames[1] += 1;
+        total_bytes += encoded.data()?.len() as u64;
+        total_frames += 1;
     }
 
-    for (i, &kbps) in [INITIAL_BITRATE_KBPS, SWITCHED_BITRATE_KBPS]
-        .iter()
-        .enumerate()
-    {
-        let frames = total_frames[i];
-        let bytes = total_bytes[i];
-        let avg = bytes.checked_div(frames).unwrap_or(0);
-        println!(
-            "segment {i}: target={kbps} kbps, frames={frames}, bytes={bytes}, avg/frame={avg}"
-        );
-    }
+    let avg_bytes = total_bytes.checked_div(total_frames).unwrap_or(0);
+    let avg_kbps = (total_bytes * 8 * FPS_DEN as u64 / 1000)
+        .checked_div(total_frames)
+        .unwrap_or(0);
+    println!(
+        "total: frames={total_frames}, bytes={total_bytes}, avg/frame={avg_bytes} bytes, avg≈{avg_kbps} kbps"
+    );
 
     Ok(())
 }

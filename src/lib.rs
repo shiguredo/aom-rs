@@ -1246,8 +1246,7 @@ pub struct EncodeOptions {
 /// エンコーダー再構成パラメータ
 ///
 /// [`Encoder::reconfigure()`] でランタイムに変更可能なフィールドを保持する。
-/// `Some` を指定したフィールドだけが書き換え対象となる。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ReconfigureParams {
     /// ターゲットビットレート (kbps 単位, libaom: `rc_target_bitrate`)
     pub rc_target_bitrate: Option<u32>,
@@ -1260,9 +1259,7 @@ pub struct ReconfigureParams {
 /// AV1 エンコーダー
 pub struct Encoder {
     ctx: sys::aom_codec_ctx,
-    /// 直近の `aom_codec_enc_cfg` のコピー
-    ///
-    /// [`Encoder::reconfigure()`] で `aom_codec_enc_config_set()` に渡すために保持する
+    /// 直近の `aom_codec_enc_cfg` のミラー (control 系は含まない)
     cfg: sys::aom_codec_enc_cfg,
     img: sys::aom_image,
     iter: sys::aom_codec_iter_t,
@@ -1965,36 +1962,23 @@ impl Encoder {
 
     /// エンコーダーの設定をランタイムに変更する
     ///
-    /// `params` で `Some` が指定されたフィールドのみを書き換え、
-    /// libaom の `aom_codec_enc_config_set()` を呼び出して反映する。
+    /// `params` で `Some` が指定されたフィールドのみを書き換え、libaom の
+    /// `aom_codec_enc_config_set()` を呼び出して反映する。control 系設定
+    /// (`AOME_SET_CPUUSED` 等) は libaom 内部状態に保持され、本メソッドの
+    /// 影響を受けない。
     ///
-    /// # 推奨運用
+    /// # Errors
     ///
-    /// libwebrtc の AV1 エンコーダー実装 (`LibaomAv1Encoder::SetRates`) と同じく、
-    /// ランタイム中はエンコーダーを破棄せず本メソッドで設定を更新するのが推奨運用となる。
-    /// `Encoder::new()` を再生成するとシーケンスが切れるため、帯域適応用途では使えない。
-    ///
-    /// タイムベース (`g_timebase`) は libwebrtc に倣い初期化時に固定し、ランタイムでは
-    /// 触らない方針を採っているため [`ReconfigureParams`] からは外している。現状の
-    /// [`Encoder::encode()`] は libaom 呼び出し時の `duration` を 1 に固定するため、
-    /// [`EncoderConfig::g_timebase`] は想定フレームレートに合わせて設定すること
-    /// (例: 30fps なら `AomRational { num: 1, den: 30 }`)。
-    ///
-    /// # 将来の SVC 拡張
-    ///
-    /// 将来 SVC レイヤー制御 (`AV1E_SET_SVC_PARAMS`) を本メソッド経由で扱うことになった場合、
-    /// libwebrtc の実装コメントに倣い「総ビットレートを先に更新してから SVC params を
-    /// 更新する」順序制約を踏襲する必要がある。詳細設計は
-    /// `issues/pending/0013-enh-add-svc-runtime-control.md` を参照。
+    /// - [`Encoder::next_frame()`] の取り出しが完了していない状態で呼ぶとエラーを返す
+    /// - libaom の `aom_codec_enc_config_set()` が失敗した場合はそのコードを返し、
+    ///   内部の設定は変更前の値のまま保たれる
     pub fn reconfigure(&mut self, params: ReconfigureParams) -> Result<(), Error> {
         self.check_iter_drained("shiguredo_aom::Encoder::reconfigure")?;
 
-        // aom_codec_enc_cfg は bindgen 生成型で Copy が derive されないため、
-        // ポインタやリソースを持たない POD であることを前提に bit copy する
-        let mut cfg: sys::aom_codec_enc_cfg = unsafe { std::ptr::read(&self.cfg) };
+        let mut cfg = self.cfg;
 
         if let Some(v) = params.rc_target_bitrate {
-            cfg.rc_target_bitrate = v as _;
+            cfg.rc_target_bitrate = v as c_uint;
         }
 
         let code = unsafe { sys::aom_codec_enc_config_set(&mut self.ctx, &cfg) };

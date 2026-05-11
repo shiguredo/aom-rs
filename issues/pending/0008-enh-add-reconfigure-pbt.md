@@ -1,7 +1,7 @@
 # reconfigure の PBT テストを追加する
 
 Created: 2026-05-10
-Model: deepseek-v4-pro
+Model: DeepSeek v4-pro
 
 ## Pending 理由
 
@@ -48,3 +48,11 @@ proptest! {
 
 - レビュー指摘: `feature/encoder-reconfigure` ブランチの `/review-diff-code` 結果より（重要指摘 4.1, テスト指摘 7）
 - CLAUDE.md: 「PBT(Property-Based Testing) や Fuzzing で必ずテストを行うこと」
+
+## 振り返り
+
+本 issue は AGENTS.md (CLAUDE.md) の「PBT 必須」「unittest は PBT で実現できないものだけを書く」ルールを根拠として起票された。その後同じブランチ内で当該ルール (および `## テストについて` / `## Rust` 節) が AGENTS.md から削除され、起票根拠が完全に消滅した。
+
+`tests/test_roundtrip.rs` に 0009 で追加された単体テスト 8 本 (midstream / multi_switch / VBR / iter active / state unchanged / forced keyframe / PSNR) が reconfigure の主要なラウンドトリップ性質を網羅しており、現時点では PBT を追加で導入する強い動機はない。
+
+教訓: 規約に依拠した issue は規約変更で前提が消える。規約の根拠そのものを再確認してから起票する。

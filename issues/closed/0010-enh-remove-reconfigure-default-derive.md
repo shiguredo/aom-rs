@@ -2,7 +2,7 @@
 
 Created: 2026-05-10
 Completed: 2026-05-10
-Model: deepseek-v4-pro
+Model: DeepSeek v4-pro
 
 ## 概要
 
@@ -51,8 +51,18 @@ impl ReconfigureParams {
 
 ## 解決方法
 
-`src/lib.rs` の `ReconfigureParams` から `#[derive(Default)]` を撤廃した（`Debug, Clone` のみ残す）。手動 `Default` 実装も追加していない。
+当初は `#[derive(Default)]` を撤廃する方針で対応したが、`amf-rs` / `vpl-rs` / `nvcodec-rs` の姉妹クレートが全て `#[derive(Debug, Clone, Default)]` で `ReconfigureParams` を定義しており、`reconfigure(params: ReconfigureParams)` を所有権渡しで受ける形で揃っていることを踏まえ、クロスクレート統一を優先して `#[derive(Default)]` を残す方針に最終決定した。
 
-`tests/test_roundtrip.rs` の `test_reconfigure_empty_params_then_encode` で使用していた `ReconfigureParams::default()` を `ReconfigureParams { rc_target_bitrate: None }` に書き換えた。
+- `ReconfigureParams` は `#[derive(Debug, Clone, Default)]` で定義する
+- `Encoder::reconfigure(&mut self, params: ReconfigureParams)` も他クレートと同じく所有権渡し
+- 外部からは `ReconfigureParams { rc_target_bitrate: Some(x), ..Default::default() }` でも `ReconfigureParams::default()` 経由でも構築できる
 
-`CHANGES.md` の `## develop` に `[CHANGE]` エントリを追加した。`cargo test`、`cargo clippy --all-targets --all-features -- -D warnings` がいずれも通過することを確認した。
+本 issue で当初懸念した「`default()` 単独呼び出しによる意図しない no-op」は、ドキュメントで「`Some` フィールドのみが書き換え対象」と明示する形で受容する。
+
+## 振り返り
+
+本 issue は **完全に空振り** した issue。当初撤廃した `#[derive(Default)]` を、その後のレビューで `#[non_exhaustive]` 付与 → 手動 `impl Default` 復活 → 姉妹クレート統一観点で `#[derive(Default)]` 完全復活、と二転三転した結果、最終 API は本 issue 起票前の状態に戻った。
+
+根本原因は「Rust 単体のベストプラクティス」だけを根拠に `Default` の必要性を判断したこと。`amf-rs` / `vpl-rs` / `nvcodec-rs` の姉妹クレートが揃って `#[derive(Default)]` を持っている事実を最初に確認していれば、本 issue は起票自体不要だった。
+
+教訓: 設定構造体・列挙型・エラー型のような「クロスクレートで一貫していると嬉しい」型については、aom 単独で derive 構成を変える issue を切る前に **姉妹クレート (amf-rs / vpl-rs / nvcodec-rs) の同名型を確認する** ことを習慣化する。

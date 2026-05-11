@@ -2,7 +2,7 @@
 
 Created: 2026-05-10
 Completed: 2026-05-10
-Model: deepseek v4-pro
+Model: DeepSeek v4-pro
 
 ## 概要
 
@@ -134,4 +134,14 @@ if let Some(v) = params.g_timebase {
 
 `CHANGES.md` の `## develop` に `[CHANGE]` エントリを追記した。
 
+なお `CHANGES.md` の `[CHANGE]` エントリは後日「未リリース API 内部の修正は最終形 `[ADD]` に集約するのが筋」という判断で取り下げられている。
+
 `cargo test`、`cargo clippy --all-targets --all-features -- -D warnings` がいずれも通過することを確認した。
+
+## 振り返り
+
+0004 の設計セクションには「`aom_codec_enc_config_set` で変更不可 / 未定義動作になるフィールド (`g_w`, `g_h`, `g_profile` 等) は `ReconfigureParams` に含めない。最初は `rc_target_bitrate` のみで切り、需要が出てから個別に追加する。」と明記されていたにも関わらず、0004 の実装段階で `g_w` / `g_h` / `g_timebase` まで追加してしまったために、本 issue 0006 で削除する作業が必要になった。
+
+連鎖して 0007 (`den == 0` バリデーション、`g_timebase` 削除で前提消失) も発生しており、設計通りに `rc_target_bitrate` のみで実装していれば 0006 / 0007 とも起票自体が不要だった。
+
+教訓: 設計セクションで「最小スコープで切る」と決めたら、実装段階で広げない。広げる場合は別 issue で根拠を明示してから着手する。

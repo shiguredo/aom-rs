@@ -2,7 +2,7 @@
 
 Created: 2026-05-10
 Completed: 2026-05-10
-Model: deepseek v4-pro
+Model: DeepSeek v4-pro
 
 ## 概要
 
@@ -100,3 +100,13 @@ fn test_reconfigure_state_unchanged_on_failure() {
 `tests/test_roundtrip.rs` に `test_reconfigure_state_unchanged_on_failure` を追加した。`rc_target_bitrate` の libaom 上限 (2,000,000 kbps) を超える `2_000_001` を渡して `reconfigure()` を失敗させたあと、妥当な値での再 `reconfigure` と数フレームの encode / decode が完走することを検証している。
 
 `CHANGES.md` の `## develop` に `[FIX]` エントリを `[CHANGE]` の後に追加した。`cargo test`、`cargo clippy --all-targets --all-features -- -D warnings` の通過を確認した。
+
+なお `CHANGES.md` の `[FIX]` エントリは後日「未リリース API 内部の修正は最終形 `[ADD]` に集約するのが筋」という判断で取り下げられている。
+
+## 振り返り
+
+本 issue は「そもそも 0004 で発生させなくてよかった」初歩バグの修正だった。FFI 呼び出し前に `self.cfg` を直接書き換えていたため、libaom 側が失敗を返すと Rust 側と libaom 側で状態が乖離する設計欠陥。
+
+修正手順は「ローカル変数に複製 → 書き換え → FFI 成功時のみ自己代入」という典型パターンで、0004 の初期実装段階で書けるべきだった。さらに後段のレビューで `std::ptr::read` を使った unsafe ビットコピーも事実誤認 (bindgen 出力 `aom_codec_enc_cfg` には `#[derive(Copy, Clone)]` が付いている) と判明し、最終的には単純な `let mut cfg = self.cfg;` に置き換わっている。
+
+教訓: FFI 呼び出しで失敗時のロールバックが必要なケースでは「複製 → 変更 → 成功時に確定」パターンを最初から採用する。bindgen 生成型の derive を確認せずに `unsafe { std::ptr::read }` を選ばない。

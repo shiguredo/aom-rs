@@ -11,22 +11,17 @@
 
 ## develop
 
-- [ADD] `Encoder::reconfigure(ReconfigureParams)` を追加する
-  - @voluntas
-- [CHANGE] `ReconfigureParams` から `g_w` / `g_h` / `g_timebase` フィールドを削除する
-  - @voluntas
-- [CHANGE] `ReconfigureParams` から `Default` derive を撤廃する
-  - @voluntas
-- [FIX] `Encoder::reconfigure()` の libaom 呼び出し失敗時に内部 `cfg` が変更前のまま保持されるよう修正する
+- [ADD] `Encoder::reconfigure(&ReconfigureParams)` を追加してターゲットビットレートをランタイム変更可能にする
   - @voluntas
 
 ### misc
 
-- `Encoder::reconfigure()` の doc コメントに libwebrtc 方式の運用方針 (エンコーダーを破棄せず本メソッドで更新する / timebase 固定運用 / 将来 SVC 拡張時の順序制約) を追記する
-  - @voluntas
 - `examples/midstream_reconfigure.rs` を追加し、30fps エンコード途中でビットレートを切り替える典型パターンを示す
   - @voluntas
-
+- `Encoder::encode()` / `finish()` / `reconfigure()` の `next_frame()` ガードを `check_iter_drained` ヘルパーに集約する
+  - @voluntas
+- reconfigure 周辺の単体テストを拡充する (ビットレート反映の検証 / PSNR 検証 / force_keyframe との併用 / 失敗時のロールバック検証)
+  - @voluntas
 
 ## 2026.1.0
 

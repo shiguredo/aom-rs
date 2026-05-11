@@ -1,8 +1,7 @@
 # reconfigure に den==0 バリデーションを追加する
 
 Created: 2026-05-10
-Completed: 2026-05-10
-Model: deepseek v4-pro
+Model: DeepSeek v4-pro
 
 ## 概要
 
@@ -75,10 +74,18 @@ fn test_reconfigure_rejects_zero_denominator() {
 - **0006** (`bug-remove-gw-gh-from-reconfigure`) — `reconfigure()` の行番号が変わるため、本 issue の修正位置 (`2000` の次行) は 0006 の後にずれる可能性がある。0006 より後に適用することを推奨する
 - 修正後は `CHANGES.md` の `## develop` に `[FIX]` エントリを追加する
 
-## 解決方法
+## 不要化理由
 
 `0012-enh-add-libwebrtc-style-reconfigure` の方針採用により、本 issue は不要となった。
 
-libwebrtc の AV1 エンコーダー実装は `g_timebase` をエンコーダー初期化時に `{1, 90000}` で固定し、ランタイムでは動かさない。フレームレート変動はエンコード時の duration（PTS 差分）で表現する。aom-rs もこの運用に倣う方針を採るため、`ReconfigureParams::g_timebase` フィールド自体を削除する（0006 のスコープに統合）。フィールドが消えれば `den == 0` を弾くバリデーションは存在自体が不要になる。
+libwebrtc の AV1 エンコーダー実装は `g_timebase` をエンコーダー初期化時に固定し、ランタイムでは動かさない。aom-rs もこの運用に倣い、`ReconfigureParams::g_timebase` フィールド自体を削除する (0006 のスコープに統合)。フィールドが消えれば `den == 0` を弾くバリデーションは存在自体が不要になる。
 
-実コードでの対応は 0006 側で行う。
+実コードでの対応は 0006 側で完了済み。本 issue は将来 `g_timebase` のランタイム変更を再度検討する場合に参照できるよう `issues/pending/` に残す。
+
+## 振り返り
+
+本 issue は 0004 の実装段階で `g_timebase` を `ReconfigureParams` に含めてしまったために派生したバリデーション要件。0006 で `g_timebase` フィールド自体が削除されることで前提が消滅し、起票自体が不要だったことが確定した。
+
+0004 の設計通り `rc_target_bitrate` のみに絞っていれば 0006 / 0007 とも発生しなかった連鎖。
+
+教訓: 入力検証 issue を起票する前に「そもそもその入力を受け取るべきか」を問う。フィールドの存在そのものが設計判断として揺らいでいる段階で個別バリデーション issue を切ると、上位設計が変わったときにまるごと無駄になる。

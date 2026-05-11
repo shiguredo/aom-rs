@@ -2,7 +2,7 @@
 
 Created: 2026-05-10
 Completed: 2026-05-10
-Model: deepseek-v4-pro
+Model: DeepSeek v4-pro
 
 ## 概要
 
@@ -57,3 +57,18 @@ reconfigure の既存テストは成功パスのみで、エラーパス・境�
 - `test_reconfigure_target_bitrate_vbr`: VBR モードでの midstream reconfigure を検証
 
 `cargo test`、`cargo clippy --all-targets --all-features -- -D warnings` がいずれも通過することを確認した。
+
+なお `test_reconfigure_empty_params_then_encode` は後段のレビューで「`ReconfigureParams` が 1 フィールドしか無い現状では退化テスト」と判定され削除されており、別途 `test_reconfigure_followed_by_forced_keyframe` と `test_reconfigure_psnr_midstream` が追加されている。`test_reconfigure_while_iter_active` などの Debug 文字列マッチも Display ベースに置き換えられている。
+
+## 振り返り
+
+本 issue は 0004 の初期実装で「成功パスのみのテスト 3 本」しか書いていなかったために、後段で「エラーパス・複数回切替・VBR・finish 後 iter active」を網羅する形に拡充する作業が必要になった。
+
+さらに本 issue で追加したテスト群も、その後のレビューで以下の不足が判明している:
+- ビットレート変更の **効果** を検証していない (`assert_eq!(decoded.len(), num_frames)` で完走しか確認していなかった)
+- Debug 文字列マッチでエラー判定しており Error の derive 変更に脆い
+- `2_000_001` などのマジック数を定数化していなかった
+
+これらは追加レビューで再修正されており、結果的に「0004 で網羅しておくべきテスト → 0009 で拡充 → さらにレビューで再修正」という 3 段階の往復が発生した。
+
+教訓: 機能追加 issue (0004) の段階でテスト戦略 (成功パス・エラーパス・効果検証・境界値・定数化・エラー比較方式) を最初から固めておく。テスト拡充 issue を切る運用は「最初に書き漏らした」サインであり、別 issue 化する前に同じ PR 内で網羅する。

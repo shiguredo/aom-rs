@@ -79,3 +79,14 @@ WebRTC / SFU で aom-rs を使う場合、libwebrtc と同じ運用パターン�
 `CHANGES.md` の `## develop` の `### misc` サブセクションに doc 追記と example 追加のエントリを追加した。
 
 `cargo test`、`cargo clippy --all-targets --all-features -- -D warnings`、`cargo run --example midstream_reconfigure` の通過を確認した。
+
+## 振り返り
+
+本 issue で行った 2 つの作業は最終的に明暗が分かれた。
+
+- **doc 追記 (`# 推奨運用` `# 将来の SVC 拡張` セクション)**: 後段のレビューで「API リファレンスとしては詳細すぎる」「`issues/pending/0013-...` というパスを doc コメントに埋め込むと crates.io / docs.rs 配布物に死参照が残る」と指摘され、全面撤回された。`Encoder::reconfigure()` doc は `Encoder::next_frame()` 取り出し中に呼べない旨と libaom 失敗時に内部 `cfg` が保持される旨だけを残す形に簡素化されている。
+- **example 追加 (`examples/midstream_reconfigure.rs`)**: 残った。後段のレビューで `[usize; 2]` segment 集計が冗長と指摘され、総バイト/総フレーム/avg kbps の単純集計に簡素化されている。
+
+つまり本 issue の純粋な成果は example 1 本のみで、doc 追記分は完全に無駄になった。
+
+教訓: API リファレンスとライブラリ内部事情 (libwebrtc に倣う / 将来の SVC 拡張) を混ぜない。設計判断の経緯は issue ファイル / コミットメッセージ / README に残し、rustdoc には API 契約 (引数・戻り値・エラー条件) だけを書く。`issues/` のパスを doc コメントに参照させない (配布物に残らないため)。

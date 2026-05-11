@@ -549,18 +549,74 @@ fn test_supported_codecs() {
 }
 
 // ============================================================================
+// reconfigure テスト用ヘルパー
+// ============================================================================
+
+/// libaom の `rc_target_bitrate` 受け入れ上限 (kbps)
+///
+/// 出典: 生成済み bindings の doc コメント (`Max allowed value is 2000000`)
+const LIBAOM_RC_TARGET_BITRATE_MAX_KBPS: u32 = 2_000_000;
+
+/// `rc_target_bitrate` だけを変更する [`ReconfigureParams`] を生成するヘルパー
+fn rc_bitrate(kbps: u32) -> ReconfigureParams {
+    ReconfigureParams {
+        rc_target_bitrate: Some(kbps),
+    }
+}
+
+/// ダミー I420 フレームをエンコードしてパケットを `packets` に積む
+fn drive_dummy(
+    encoder: &mut Encoder,
+    options: &EncodeOptions,
+    width: u32,
+    height: u32,
+    range: std::ops::Range<usize>,
+    packets: &mut Vec<Vec<u8>>,
+) {
+    for i in range {
+        let (y, u, v) = generate_dummy_i420(width as usize, height as usize, i);
+        let image = ImageData::I420 {
+            y: &y,
+            u: &u,
+            v: &v,
+        };
+        encoder.encode(&image, options).expect("failed to encode");
+        while let Some(encoded) = encoder.next_frame() {
+            packets.push(encoded.data().expect("failed to get encoded data").to_vec());
+        }
+    }
+}
+
+/// `finish()` を呼び、残りのパケットを `packets` に積む
+fn drain_after_finish(encoder: &mut Encoder, packets: &mut Vec<Vec<u8>>) {
+    encoder.finish().expect("failed to finish");
+    while let Some(encoded) = encoder.next_frame() {
+        packets.push(encoded.data().expect("failed to get encoded data").to_vec());
+    }
+}
+
+fn total_bytes(packets: &[Vec<u8>]) -> u64 {
+    packets.iter().map(|p| p.len() as u64).sum()
+}
+
+// ============================================================================
 // reconfigure テスト
 // ============================================================================
 
-/// エンコード途中で reconfigure を呼んでビットレートを変更しても
-/// エンコード・デコードがエラーなく完走することを確認する
+/// エンコード途中で `reconfigure` を呼んでビットレートを大幅に下げ、
+/// 後半合計バイト数が前半より明確に小さくなる (= 設定変更が実際に効いている)
+/// ことを確認する
 #[test]
 fn test_reconfigure_target_bitrate_midstream() {
     let width = 320;
     let height = 240;
-    let num_frames = 12;
+    let half = 12;
 
-    let config = realtime_config(width, height, RateControlMode::Cbr);
+    // 高ビットレートから低ビットレートに切り替える方向で検証する。
+    // 前半のキーフレーム膨張を考慮しても後半 (P フレーム主体・低ビットレート) が
+    // 明確に小さくなるため、緩い閾値でも安定して検出できる。
+    let mut config = realtime_config(width, height, RateControlMode::Cbr);
+    config.rc_target_bitrate = 5000;
 
     let mut encoder = Encoder::new(config).expect("failed to create encoder");
     let options = EncodeOptions {
@@ -568,34 +624,31 @@ fn test_reconfigure_target_bitrate_midstream() {
     };
     let mut packets: Vec<Vec<u8>> = Vec::new();
 
-    for i in 0..num_frames {
-        if i == num_frames / 2 {
-            encoder
-                .reconfigure(ReconfigureParams {
-                    rc_target_bitrate: Some(2000),
-                })
-                .expect("failed to reconfigure");
-        }
+    drive_dummy(&mut encoder, &options, width, height, 0..half, &mut packets);
+    let before_count = packets.len();
 
-        let (y, u, v) = generate_dummy_i420(width as usize, height as usize, i);
-        let image = ImageData::I420 {
-            y: &y,
-            u: &u,
-            v: &v,
-        };
-        encoder.encode(&image, &options).expect("failed to encode");
-        while let Some(encoded) = encoder.next_frame() {
-            packets.push(encoded.data().expect("failed to get encoded data").to_vec());
-        }
-    }
+    encoder
+        .reconfigure(rc_bitrate(200))
+        .expect("failed to reconfigure");
 
-    encoder.finish().expect("failed to finish");
-    while let Some(encoded) = encoder.next_frame() {
-        packets.push(encoded.data().expect("failed to get encoded data").to_vec());
-    }
+    drive_dummy(
+        &mut encoder,
+        &options,
+        width,
+        height,
+        half..half * 2,
+        &mut packets,
+    );
+    drain_after_finish(&mut encoder, &mut packets);
 
-    let decoded = decode_frames(&packets);
-    assert_eq!(decoded.len(), num_frames);
+    let (before, after) = packets.split_at(before_count);
+    let before_bytes = total_bytes(before);
+    let after_bytes = total_bytes(after);
+    assert!(
+        after_bytes * 2 < before_bytes,
+        "expected after_bytes * 2 < before_bytes (bitrate reconfigure had no effect): before={before_bytes}, after={after_bytes}",
+    );
+    assert_eq!(decode_frames(&packets).len(), half * 2);
 }
 
 /// `Encoder::new` 直後に reconfigure を呼び、そのままエンコード・デコードまで
@@ -609,70 +662,23 @@ fn test_reconfigure_immediately_after_new() {
     let mut encoder = Encoder::new(config).expect("failed to create encoder");
 
     encoder
-        .reconfigure(ReconfigureParams {
-            rc_target_bitrate: Some(500),
-        })
+        .reconfigure(rc_bitrate(500))
         .expect("failed to reconfigure");
 
     let options = EncodeOptions {
         force_keyframe: false,
     };
     let mut packets: Vec<Vec<u8>> = Vec::new();
-    for i in 0..num_frames {
-        let (y, u, v) = generate_dummy_i420(width as usize, height as usize, i);
-        let image = ImageData::I420 {
-            y: &y,
-            u: &u,
-            v: &v,
-        };
-        encoder.encode(&image, &options).expect("failed to encode");
-        while let Some(encoded) = encoder.next_frame() {
-            packets.push(encoded.data().expect("failed to get encoded data").to_vec());
-        }
-    }
-    encoder.finish().expect("failed to finish");
-    while let Some(encoded) = encoder.next_frame() {
-        packets.push(encoded.data().expect("failed to get encoded data").to_vec());
-    }
-    assert_eq!(decode_frames(&packets).len(), num_frames);
-}
+    drive_dummy(
+        &mut encoder,
+        &options,
+        width,
+        height,
+        0..num_frames,
+        &mut packets,
+    );
+    drain_after_finish(&mut encoder, &mut packets);
 
-/// 空の `ReconfigureParams` で reconfigure した後でも、エンコード・デコードが
-/// 正常に完走することを確認する
-#[test]
-fn test_reconfigure_empty_params_then_encode() {
-    let width = 320;
-    let height = 240;
-    let num_frames = 4;
-    let config = realtime_config(width, height, RateControlMode::Cbr);
-    let mut encoder = Encoder::new(config).expect("failed to create encoder");
-
-    encoder
-        .reconfigure(ReconfigureParams {
-            rc_target_bitrate: None,
-        })
-        .expect("failed to reconfigure");
-
-    let options = EncodeOptions {
-        force_keyframe: false,
-    };
-    let mut packets: Vec<Vec<u8>> = Vec::new();
-    for i in 0..num_frames {
-        let (y, u, v) = generate_dummy_i420(width as usize, height as usize, i);
-        let image = ImageData::I420 {
-            y: &y,
-            u: &u,
-            v: &v,
-        };
-        encoder.encode(&image, &options).expect("failed to encode");
-        while let Some(encoded) = encoder.next_frame() {
-            packets.push(encoded.data().expect("failed to get encoded data").to_vec());
-        }
-    }
-    encoder.finish().expect("failed to finish");
-    while let Some(encoded) = encoder.next_frame() {
-        packets.push(encoded.data().expect("failed to get encoded data").to_vec());
-    }
     assert_eq!(decode_frames(&packets).len(), num_frames);
 }
 
@@ -684,8 +690,11 @@ fn test_reconfigure_while_iter_active() {
     let height = 240;
     let config = realtime_config(width, height, RateControlMode::Cbr);
     let mut encoder = Encoder::new(config).expect("failed to create encoder");
+
+    // realtime モードでは最初の encode から 1 フレーム以上出力されるため、
+    // force_keyframe は不要
     let options = EncodeOptions {
-        force_keyframe: true,
+        force_keyframe: false,
     };
     let (y, u, v) = generate_dummy_i420(width as usize, height as usize, 0);
     let image = ImageData::I420 {
@@ -704,11 +713,13 @@ fn test_reconfigure_while_iter_active() {
         .to_vec();
 
     let err = encoder
-        .reconfigure(ReconfigureParams {
-            rc_target_bitrate: Some(2000),
-        })
+        .reconfigure(rc_bitrate(2000))
         .expect_err("reconfigure should fail while iter is active");
-    assert!(format!("{err:?}").contains("Encoder::reconfigure"));
+    assert!(
+        err.to_string()
+            .starts_with("shiguredo_aom::Encoder::reconfigure()"),
+        "unexpected error message: {err}"
+    );
 }
 
 /// `finish()` 後に `next_frame()` がまだ完了していない状態で reconfigure を
@@ -729,18 +740,8 @@ fn test_reconfigure_after_finish_while_iter_active() {
         force_keyframe: false,
     };
 
-    for i in 0..6 {
-        let (y, u, v) = generate_dummy_i420(width as usize, height as usize, i);
-        let image = ImageData::I420 {
-            y: &y,
-            u: &u,
-            v: &v,
-        };
-        encoder.encode(&image, &options).expect("failed to encode");
-        while let Some(encoded) = encoder.next_frame() {
-            let _ = encoded.data().expect("failed to get encoded data").to_vec();
-        }
-    }
+    let mut packets = Vec::new();
+    drive_dummy(&mut encoder, &options, width, height, 0..6, &mut packets);
 
     encoder.finish().expect("failed to finish");
 
@@ -753,11 +754,13 @@ fn test_reconfigure_after_finish_while_iter_active() {
         .to_vec();
 
     let err = encoder
-        .reconfigure(ReconfigureParams {
-            rc_target_bitrate: Some(2000),
-        })
+        .reconfigure(rc_bitrate(2000))
         .expect_err("reconfigure should fail while iter is active after finish");
-    assert!(format!("{err:?}").contains("Encoder::reconfigure"));
+    assert!(
+        err.to_string()
+            .starts_with("shiguredo_aom::Encoder::reconfigure()"),
+        "unexpected error message: {err}"
+    );
 }
 
 /// ビットレートを連続して複数回切り替えても、エンコード・デコードが
@@ -779,35 +782,30 @@ fn test_reconfigure_target_bitrate_multi_switch() {
 
     for (segment, &bitrate) in bitrates.iter().enumerate() {
         encoder
-            .reconfigure(ReconfigureParams {
-                rc_target_bitrate: Some(bitrate),
-            })
+            .reconfigure(rc_bitrate(bitrate))
             .expect("failed to reconfigure");
 
-        for j in 0..frames_per_segment {
-            let i = segment * frames_per_segment + j;
-            let (y, u, v) = generate_dummy_i420(width as usize, height as usize, i);
-            let image = ImageData::I420 {
-                y: &y,
-                u: &u,
-                v: &v,
-            };
-            encoder.encode(&image, &options).expect("failed to encode");
-            while let Some(encoded) = encoder.next_frame() {
-                packets.push(encoded.data().expect("failed to get encoded data").to_vec());
-            }
-        }
+        let begin = segment * frames_per_segment;
+        drive_dummy(
+            &mut encoder,
+            &options,
+            width,
+            height,
+            begin..begin + frames_per_segment,
+            &mut packets,
+        );
     }
-
-    encoder.finish().expect("failed to finish");
-    while let Some(encoded) = encoder.next_frame() {
-        packets.push(encoded.data().expect("failed to get encoded data").to_vec());
-    }
+    drain_after_finish(&mut encoder, &mut packets);
 
     assert_eq!(decode_frames(&packets).len(), num_frames);
 }
 
 /// VBR モードでもエンコード途中の reconfigure が完走することを確認する
+///
+/// VBR は CBR ほどタイトに target に追従しないため、本テストでは合計バイト数の
+/// 大小比較ではなく「reconfigure 後もエンコード・デコードが完走する」ことだけを
+/// 確認する。ビットレート反映の検証は `test_reconfigure_target_bitrate_midstream`
+/// (CBR) で担当する。
 #[test]
 fn test_reconfigure_target_bitrate_vbr() {
     let width = 320;
@@ -821,38 +819,28 @@ fn test_reconfigure_target_bitrate_vbr() {
     };
     let mut packets: Vec<Vec<u8>> = Vec::new();
 
-    for i in 0..num_frames {
-        if i == num_frames / 2 {
-            encoder
-                .reconfigure(ReconfigureParams {
-                    rc_target_bitrate: Some(2000),
-                })
-                .expect("failed to reconfigure");
-        }
-        let (y, u, v) = generate_dummy_i420(width as usize, height as usize, i);
-        let image = ImageData::I420 {
-            y: &y,
-            u: &u,
-            v: &v,
-        };
-        encoder.encode(&image, &options).expect("failed to encode");
-        while let Some(encoded) = encoder.next_frame() {
-            packets.push(encoded.data().expect("failed to get encoded data").to_vec());
-        }
-    }
-    encoder.finish().expect("failed to finish");
-    while let Some(encoded) = encoder.next_frame() {
-        packets.push(encoded.data().expect("failed to get encoded data").to_vec());
-    }
+    let half = num_frames / 2;
+    drive_dummy(&mut encoder, &options, width, height, 0..half, &mut packets);
+    encoder
+        .reconfigure(rc_bitrate(2000))
+        .expect("failed to reconfigure");
+    drive_dummy(
+        &mut encoder,
+        &options,
+        width,
+        height,
+        half..num_frames,
+        &mut packets,
+    );
+    drain_after_finish(&mut encoder, &mut packets);
 
     assert_eq!(decode_frames(&packets).len(), num_frames);
 }
 
-/// reconfigure が libaom 検証で失敗した場合でも、後続の reconfigure と encode が
-/// 失敗前の設定で正常動作することを確認する
+/// reconfigure が libaom 検証で失敗した場合に、内部 `cfg` が変更前のまま保たれ、
+/// 同じ範囲外値での再呼び出しでも同じく失敗することを確認する
 ///
-/// libaom の `rc_target_bitrate` 上限は 2,000,000 kbps なので、これを超える値で
-/// 失敗を発生させる
+/// `LIBAOM_RC_TARGET_BITRATE_MAX_KBPS` を超える値を渡して失敗を発生させる。
 #[test]
 fn test_reconfigure_state_unchanged_on_failure() {
     let width = 320;
@@ -863,38 +851,134 @@ fn test_reconfigure_state_unchanged_on_failure() {
         force_keyframe: false,
     };
 
-    let err = encoder
-        .reconfigure(ReconfigureParams {
-            rc_target_bitrate: Some(2_000_001),
-        })
-        .expect_err("expected reconfigure to fail with out-of-range bitrate");
-    assert!(format!("{err:?}").contains("aom_codec_enc_config_set"));
+    let oor_bitrate = LIBAOM_RC_TARGET_BITRATE_MAX_KBPS + 1;
 
-    // 失敗後も妥当な値での reconfigure が成功し、エンコードまで完走することを確認する
+    let err = encoder
+        .reconfigure(rc_bitrate(oor_bitrate))
+        .expect_err("expected reconfigure to fail with out-of-range bitrate");
+    assert!(
+        err.to_string().starts_with("aom_codec_enc_config_set()"),
+        "unexpected error message: {err}"
+    );
+
+    // 同じ範囲外値を再度渡しても同様に失敗する (= self.cfg が壊れていない)
+    let err_retry = encoder
+        .reconfigure(rc_bitrate(oor_bitrate))
+        .expect_err("expected the second out-of-range reconfigure to also fail");
+    assert!(
+        err_retry
+            .to_string()
+            .starts_with("aom_codec_enc_config_set()"),
+        "unexpected error message: {err_retry}"
+    );
+
+    // 妥当な値での reconfigure が成功し、エンコード・デコードまで完走する
     encoder
-        .reconfigure(ReconfigureParams {
-            rc_target_bitrate: Some(1500),
-        })
+        .reconfigure(rc_bitrate(1500))
         .expect("reconfigure with valid bitrate should succeed after a failed call");
 
     let mut packets: Vec<Vec<u8>> = Vec::new();
-    for i in 0..3 {
-        let (y, u, v) = generate_dummy_i420(width as usize, height as usize, i);
+    drive_dummy(&mut encoder, &options, width, height, 0..3, &mut packets);
+    drain_after_finish(&mut encoder, &mut packets);
+    assert_eq!(decode_frames(&packets).len(), 3);
+}
+
+/// reconfigure 直後に `force_keyframe: true` でエンコードしても完走することを確認する
+///
+/// 帯域急変時の典型パターン (ビットレートを上げると同時にキーフレームを打ち直す) を
+/// 想定したテスト。
+#[test]
+fn test_reconfigure_followed_by_forced_keyframe() {
+    let width = 320;
+    let height = 240;
+    let config = realtime_config(width, height, RateControlMode::Cbr);
+    let mut encoder = Encoder::new(config).expect("failed to create encoder");
+    let options_p = EncodeOptions {
+        force_keyframe: false,
+    };
+    let options_key = EncodeOptions {
+        force_keyframe: true,
+    };
+
+    let mut packets: Vec<Vec<u8>> = Vec::new();
+    drive_dummy(&mut encoder, &options_p, width, height, 0..3, &mut packets);
+
+    encoder
+        .reconfigure(rc_bitrate(2000))
+        .expect("failed to reconfigure");
+
+    // reconfigure 直後にキーフレームを強制する
+    let (y, u, v) = generate_dummy_i420(width as usize, height as usize, 3);
+    let image = ImageData::I420 {
+        y: &y,
+        u: &u,
+        v: &v,
+    };
+    encoder
+        .encode(&image, &options_key)
+        .expect("failed to encode keyframe after reconfigure");
+    let mut keyframe_seen = false;
+    while let Some(encoded) = encoder.next_frame() {
+        if encoded.is_keyframe() {
+            keyframe_seen = true;
+        }
+        packets.push(encoded.data().expect("failed to get encoded data").to_vec());
+    }
+    assert!(
+        keyframe_seen,
+        "force_keyframe = true で reconfigure 直後のフレームがキーフレームとして出力されなかった"
+    );
+
+    drive_dummy(&mut encoder, &options_p, width, height, 4..6, &mut packets);
+    drain_after_finish(&mut encoder, &mut packets);
+
+    assert_eq!(decode_frames(&packets).len(), 6);
+}
+
+/// reconfigure をはさんでもデコード後のフレームが元入力と整合する程度の画質を
+/// 保つことを PSNR で確認する
+///
+/// カラーバー入力を使い、midstream で reconfigure (5000 → 1500 kbps) した後でも
+/// 全フレームで PSNR が 20 dB 以上であることを確認する。
+#[test]
+fn test_reconfigure_psnr_midstream() {
+    let width = 320usize;
+    let height = 240usize;
+    let num_frames = 16;
+
+    let mut config = realtime_config(width as u32, height as u32, RateControlMode::Cbr);
+    config.rc_target_bitrate = 5000;
+
+    let (input_y, input_u, input_v) = generate_colorbar_i420(width, height);
+
+    let mut encoder = Encoder::new(config).expect("failed to create encoder");
+    let options = EncodeOptions {
+        force_keyframe: false,
+    };
+    let mut packets: Vec<Vec<u8>> = Vec::new();
+
+    for i in 0..num_frames {
+        if i == num_frames / 2 {
+            encoder
+                .reconfigure(rc_bitrate(1500))
+                .expect("failed to reconfigure");
+        }
         let image = ImageData::I420 {
-            y: &y,
-            u: &u,
-            v: &v,
+            y: &input_y,
+            u: &input_u,
+            v: &input_v,
         };
         encoder.encode(&image, &options).expect("failed to encode");
         while let Some(encoded) = encoder.next_frame() {
             packets.push(encoded.data().expect("failed to get encoded data").to_vec());
         }
     }
-    encoder.finish().expect("failed to finish");
-    while let Some(encoded) = encoder.next_frame() {
-        packets.push(encoded.data().expect("failed to get encoded data").to_vec());
-    }
+    drain_after_finish(&mut encoder, &mut packets);
 
     let decoded = decode_frames(&packets);
-    assert_eq!(decoded.len(), 3);
+    assert_eq!(decoded.len(), num_frames);
+    for (i, (y, _, _)) in decoded.iter().enumerate() {
+        let psnr = psnr_y(&input_y, y, width, height);
+        assert!(psnr >= 20.0, "frame {i}: PSNR {psnr:.1} dB < 20.0 dB");
+    }
 }
