@@ -1243,6 +1243,15 @@ pub struct EncodeOptions {
     pub force_keyframe: bool,
 }
 
+/// エンコーダー再構成パラメータ
+///
+/// [`Encoder::reconfigure()`] でランタイムに変更可能なフィールドを保持する。
+#[derive(Debug, Clone, Default)]
+pub struct ReconfigureParams {
+    /// ターゲットビットレート (kbps 単位, libaom: `rc_target_bitrate`)
+    pub rc_target_bitrate: Option<u32>,
+}
+
 // ============================================================================
 // エンコーダー
 // ============================================================================
@@ -1250,6 +1259,8 @@ pub struct EncodeOptions {
 /// AV1 エンコーダー
 pub struct Encoder {
     ctx: sys::aom_codec_ctx,
+    /// 直近の `aom_codec_enc_cfg` のミラー (control 系は含まない)
+    cfg: sys::aom_codec_enc_cfg,
     img: sys::aom_image,
     iter: sys::aom_codec_iter_t,
     frame_count: usize,
@@ -1545,6 +1556,7 @@ impl Encoder {
 
             let mut this = Self {
                 ctx: ctx.assume_init(),
+                cfg: aom_config,
                 img,
                 iter: std::ptr::null(),
                 frame_count: 0,
@@ -1948,19 +1960,42 @@ impl Encoder {
         Error::check(code, "aom_codec_control", Some(&self.ctx))
     }
 
+    /// エンコーダーの設定をランタイムに変更する
+    ///
+    /// `params` で `Some` が指定されたフィールドのみを書き換え、libaom の
+    /// `aom_codec_enc_config_set()` を呼び出して反映する。control 系設定
+    /// (`AOME_SET_CPUUSED` 等) は libaom 内部状態に保持され、本メソッドの
+    /// 影響を受けない。
+    ///
+    /// # Errors
+    ///
+    /// - [`Encoder::next_frame()`] の取り出しが完了していない状態で呼ぶとエラーを返す
+    /// - libaom の `aom_codec_enc_config_set()` が失敗した場合はそのコードを返し、
+    ///   内部の設定は変更前の値のまま保たれる
+    pub fn reconfigure(&mut self, params: ReconfigureParams) -> Result<(), Error> {
+        self.check_iter_drained("shiguredo_aom::Encoder::reconfigure")?;
+
+        let mut cfg = self.cfg;
+
+        if let Some(v) = params.rc_target_bitrate {
+            cfg.rc_target_bitrate = v as c_uint;
+        }
+
+        let code = unsafe { sys::aom_codec_enc_config_set(&mut self.ctx, &cfg) };
+        Error::check(code, "aom_codec_enc_config_set", Some(&self.ctx))?;
+
+        // aom_codec_enc_config_set が成功した場合のみ self.cfg を更新する
+        self.cfg = cfg;
+        Ok(())
+    }
+
     /// 画像データをエンコードする
     ///
     /// エンコード結果は [`Encoder::next_frame()`] で取得できる
     ///
     /// `image` のフォーマットはエンコーダー初期化時に指定した `ImageFormat` と一致する必要がある
     pub fn encode(&mut self, image: &ImageData<'_>, options: &EncodeOptions) -> Result<(), Error> {
-        if !self.iter.is_null() {
-            return Err(Error::with_reason(
-                sys::aom_codec_err_t_AOM_CODEC_ERROR,
-                "shiguredo_aom::Encoder::encode",
-                "still need to call shiguredo_aom::Encoder::next_frame()",
-            ));
-        }
+        self.check_iter_drained("shiguredo_aom::Encoder::encode")?;
 
         // フォーマット整合性チェック
         if image.format() != self.image_format {
@@ -2061,13 +2096,7 @@ impl Encoder {
     ///
     /// 残りのエンコード結果は [`Encoder::next_frame()`] で取得できる
     pub fn finish(&mut self) -> Result<(), Error> {
-        if !self.iter.is_null() {
-            return Err(Error::with_reason(
-                sys::aom_codec_err_t_AOM_CODEC_ERROR,
-                "shiguredo_aom::Encoder::finish",
-                "still need to call shiguredo_aom::Encoder::next_frame()",
-            ));
-        }
+        self.check_iter_drained("shiguredo_aom::Encoder::finish")?;
 
         let code = unsafe {
             sys::aom_codec_encode(
@@ -2079,6 +2108,21 @@ impl Encoder {
             )
         };
         Error::check(code, "aom_codec_encode", Some(&self.ctx))?;
+        Ok(())
+    }
+
+    /// `next_frame()` の取り出しが完了していることを確認する
+    ///
+    /// `encode()` / `finish()` / `reconfigure()` は `next_frame()` の取り出し中
+    /// (`self.iter` が非 NULL) には呼べない。共通のガード処理として抽出している。
+    fn check_iter_drained(&self, function: &'static str) -> Result<(), Error> {
+        if !self.iter.is_null() {
+            return Err(Error::with_reason(
+                sys::aom_codec_err_t_AOM_CODEC_ERROR,
+                function,
+                "still need to call shiguredo_aom::Encoder::next_frame()",
+            ));
+        }
         Ok(())
     }
 
