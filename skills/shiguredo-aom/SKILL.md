@@ -207,9 +207,11 @@ pub enum RateControlMode {
     Vbr, Cbr, Cq, Q,
 }
 
+#[non_exhaustive]
 pub enum KeyframeMode {
-    Fixed, // 固定間隔
-    Auto,  // 自動配置
+    Disabled, // 自動配置を停止 (force_keyframe で挿入)。シーケンス先頭は常に KEY
+    Fixed,    // [deprecated] AOM_KF_FIXED は AOM_KF_DISABLED の deprecated alias
+    Auto,     // 自動配置 (kf_min_dist == kf_max_dist で auto_key が無効化される)
 }
 
 pub enum EncodingPass {
@@ -226,6 +228,8 @@ pub enum ContentType    { Default, Screen, Film }
 
 `EncoderConfig` のフィールドは libaom の `aom_codec_enc_cfg_t` と `aom_codec_control` 制御パラメータに対応する。`Option` のフィールドは `None` で libaom デフォルトを採用する。
 
+`EncoderConfig` には `#[non_exhaustive]` が付与されており、構造体リテラルでの全フィールド指定は不可。`EncoderConfig::new()` で生成してから個別フィールドを上書きする運用。
+
 ```rust
 let mut config = EncoderConfig::new(g_w, g_h, image_format);
 ```
@@ -237,12 +241,14 @@ let mut config = EncoderConfig::new(g_w, g_h, image_format);
 - リサイズ / スーパーレゾリューション: `rc_resize_mode`, `rc_resize_denominator`, `rc_resize_kf_denominator`, `rc_superres_mode`, `rc_superres_denominator`, `rc_superres_kf_denominator`, `rc_superres_qthresh`, `rc_superres_kf_qthresh`, `enable_superres`
 - キーフレーム / GOP: `kf_mode`, `kf_min_dist`, `kf_max_dist`, `fwd_kf_enabled`, `sframe_dist`, `sframe_mode`
 - タイル: `tile_columns`, `tile_rows`, `tile_width_count`, `tile_height_count`, `tile_widths`, `tile_heights`, `large_scale_tile`
-- 速度 / 品質: `cpu_used` (0-10, 大きいほど高速), `cq_level`, `sharpness`, `static_threshold`, `arnr_max_frames`, `arnr_strength`, `max_intra_bitrate_pct`, `aq_mode`, `deltaq_mode`, `lossless`, `noise_sensitivity`
+- 速度 / 品質: `cpu_used` (0-10, 大きいほど高速), `cq_level`, `sharpness`, `static_threshold`, `arnr_max_frames`, `arnr_strength`, `max_intra_bitrate_pct`, `aq_mode`, `deltaq_mode`, `lossless`, `noise_sensitivity`, `intra_default_tx_only`
 - フィルター: `enable_cdef`, `enable_restoration`, `loopfilter_control`, `enable_obmc`, `denoise_noise_level`, `denoise_block_size`, `film_grain_test_vector`
 - モーション / 予測: `enable_global_motion`, `enable_warped_motion`, `enable_tpl_model`, `enable_keyframe_filtering`, `min_gf_interval`, `max_gf_interval`, `gf_max_pyramid_height`, `max_reference_frames`
 - Intra: `enable_filter_intra`, `enable_smooth_intra`, `enable_paeth_intra`, `enable_cfl_intra`, `enable_palette`, `enable_intrabc`
 - パーティション: `superblock_size`, `enable_rect_partitions`, `enable_ab_partitions`, `enable_1to4_partitions`
 - カラー: `color_primaries`, `transfer_characteristics`, `matrix_coefficients`, `color_range`, `enable_chroma_deltaq`, `enable_dual_filter`
+- realtime 配信向け sequence-level 機能フラグ: `enable_order_hint`, `enable_ref_frame_mvs`, `enable_angle_delta` (libaom 通常ビルドのデフォルトは `1` で、`Usage::Realtime` を選んでも変わらない。realtime 配信用途では `Some(false)` を指定する)
+- realtime 配信向け RD コスト更新頻度: `coeff_cost_upd_freq`, `mode_cost_upd_freq`, `mv_cost_upd_freq` (有効値 `0..=3`、`0=SB`, `1=SB row`, `2=tile`, `3=off`。libaom 通常ビルドのデフォルトは `0` で、realtime 配信用途では `Some(3)` を指定する)
 - その他: `row_mt`, `tune_content`, `monochrome`, `full_still_picture_hdr`, `save_as_annexb`, `use_fixed_qp_offsets`
 
 ### EncodeOptions / ReconfigureParams

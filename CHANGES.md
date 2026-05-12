@@ -27,6 +27,8 @@
   - @voluntas
 - [ADD] `EncoderConfig` に `mv_cost_upd_freq` フィールドを追加する
   - @voluntas
+- [CHANGE] `EncoderConfig` に `#[non_exhaustive]` を付与する
+  - @voluntas
 - [CHANGE] `KeyframeMode` に `#[non_exhaustive]` を付与する
   - @voluntas
 - [CHANGE] `KeyframeMode` に `Disabled` variant を追加する
@@ -41,6 +43,10 @@
 - `Encoder::encode()` / `finish()` / `reconfigure()` の `next_frame()` ガードを `check_iter_drained` ヘルパーに集約する
   - @voluntas
 - reconfigure 周辺の単体テストを拡充する (ビットレート反映の検証 / PSNR 検証 / force_keyframe との併用 / 失敗時のロールバック検証)
+  - @voluntas
+- `KeyframeMode` から libaom の `aom_kf_mode` 定数へのマッピングを `map_kf_mode` private fn に切り出す
+  - @voluntas
+- realtime 制御フラグ周辺のテストを拡充する (`*_cost_upd_freq` 値域エラー / `KeyframeMode::Auto` / `KeyframeMode::Fixed` の deprecated alias 同値性)
   - @voluntas
 
 ## 2026.1.0

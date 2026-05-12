@@ -435,10 +435,15 @@ fn test_roundtrip_force_keyframe() {
 // realtime 制御フラグテスト
 // ============================================================================
 
-/// realtime 配信向けの典型セットでカラーバーをラウンドトリップする (PSNR 検証)
-#[test]
-fn test_roundtrip_realtime_controls_typical_set() {
-    let mut config = realtime_config(320, 240, RateControlMode::Cbr);
+/// realtime 配信向け 7 推奨値 + `KeyframeMode::Disabled` を `Usage::GoodQuality` ベースに
+/// 上書きするヘルパー
+///
+/// shiguredo_aom がリンクする libaom (通常ビルド) では `Usage::Realtime` を選んでも
+/// 7 フィールドのデフォルトは GoodQuality 寄り (`enable_*` 系 = 1、`*_cost_upd_freq`
+/// = SB) のままで変わらない。本ヘルパーで明示的に realtime 推奨値を上書きすることで、
+/// 7 フィールドが実際に Encoder へ反映される経路をテストできる。
+fn good_quality_with_realtime_controls(width: u32, height: u32) -> EncoderConfig {
+    let mut config = good_quality_config(width, height, RateControlMode::Cbr);
     config.enable_order_hint = Some(false);
     config.enable_ref_frame_mvs = Some(false);
     config.enable_angle_delta = Some(false);
@@ -447,17 +452,14 @@ fn test_roundtrip_realtime_controls_typical_set() {
     config.mode_cost_upd_freq = Some(3);
     config.mv_cost_upd_freq = Some(3);
     config.kf_mode = Some(KeyframeMode::Disabled);
-
-    roundtrip_colorbar(config, 30, 25.0);
+    config
 }
 
-/// `KeyframeMode::Disabled` 指定時に自動キーフレーム挿入が停止することを確認する
-#[test]
-fn test_keyframe_mode_disabled_suppresses_auto_keyframe() {
-    let width = 320;
-    let height = 240;
-    let num_frames = 30;
-
+/// `Usage::Realtime` ベースで 7 推奨値 + `KeyframeMode::Disabled` を指定するヘルパー
+///
+/// `Usage::Realtime` + `g_lag_in_frames = Some(0)` 下では `force_keyframe` が同フレームで
+/// 反映されるため、フレーム単位の厳密 assert が可能。
+fn realtime_with_disabled_keyframe(width: u32, height: u32) -> EncoderConfig {
     let mut config = realtime_config(width, height, RateControlMode::Cbr);
     config.enable_order_hint = Some(false);
     config.enable_ref_frame_mvs = Some(false);
@@ -468,9 +470,38 @@ fn test_keyframe_mode_disabled_suppresses_auto_keyframe() {
     config.mv_cost_upd_freq = Some(3);
     config.kf_mode = Some(KeyframeMode::Disabled);
     config.g_lag_in_frames = Some(0);
+    config
+}
 
+/// realtime 配信向けの典型セットを `Usage::GoodQuality` 上で適用してラウンドトリップする
+/// (PSNR 検証)
+///
+/// `Usage::GoodQuality` ベースで 7 フィールドを realtime 推奨値に上書きすることで、
+/// 7 フィールドが GoodQuality デフォルト (= 重い設定) と異なる経路に影響することを
+/// 間接的に検証する。`Usage::Realtime` ベースでは libaom 通常ビルドの挙動として
+/// 7 フィールドのデフォルトが既に同じ値ではないため、上書きしないと検証経路が
+/// libaom デフォルトのままになってしまう。
+#[test]
+fn test_roundtrip_realtime_controls_typical_set() {
+    let config = good_quality_with_realtime_controls(320, 240);
+    roundtrip_colorbar(config, 30, 25.0);
+}
+
+/// `KeyframeMode::Disabled` 指定時に `kf_min_dist` / `kf_max_dist` のデフォルト経路で
+/// 自動キーフレーム挿入が抑止されることを確認する
+///
+/// ここで検証するのは「`kf_max_dist` のデフォルト周期挿入が止まる」ことのみ。
+/// シーンチェンジ抑制の本質検証 (Auto との対比) は別途行う必要がある。
+#[test]
+fn test_keyframe_mode_disabled_suppresses_periodic_keyframe() {
+    let width = 320;
+    let height = 240;
+    let num_frames = 30;
+
+    let config = realtime_with_disabled_keyframe(width, height);
     let mut encoder = Encoder::new(config).expect("failed to create encoder");
     let mut keyframe_flags = Vec::new();
+    let mut packets = Vec::new();
 
     for i in 0..num_frames {
         let (y, u, v) = generate_dummy_i420(width as usize, height as usize, i);
@@ -482,17 +513,28 @@ fn test_keyframe_mode_disabled_suppresses_auto_keyframe() {
             u: &u,
             v: &v,
         };
+        let pre = keyframe_flags.len();
         encoder.encode(&image, &options).expect("failed to encode");
         while let Some(encoded) = encoder.next_frame() {
             keyframe_flags.push(encoded.is_keyframe());
-            let _ = encoded.data().expect("failed to get encoded data");
+            packets.push(encoded.data().expect("failed to get encoded data").to_vec());
         }
+        assert!(
+            keyframe_flags.len() > pre,
+            "frame {i}: encoder produced no output (g_lag_in_frames=0 expected to drain)"
+        );
     }
+    let pre_finish = keyframe_flags.len();
     encoder.finish().expect("failed to finish");
     while let Some(encoded) = encoder.next_frame() {
         keyframe_flags.push(encoded.is_keyframe());
-        let _ = encoded.data().expect("failed to get encoded data");
+        packets.push(encoded.data().expect("failed to get encoded data").to_vec());
     }
+    assert_eq!(
+        keyframe_flags.len(),
+        pre_finish,
+        "finish should not produce extra frames under g_lag_in_frames=0"
+    );
 
     assert_eq!(
         keyframe_flags.len(),
@@ -502,14 +544,18 @@ fn test_keyframe_mode_disabled_suppresses_auto_keyframe() {
     );
     assert!(
         keyframe_flags[0],
-        "expected the first frame to be a keyframe"
+        "expected the first frame to be a keyframe (AV1 sequence header constraint)"
     );
     for (i, &is_key) in keyframe_flags.iter().enumerate().skip(1) {
         assert!(
             !is_key,
-            "expected frame {i} to be a non-keyframe under KeyframeMode::Disabled"
+            "frame {i} should not be a keyframe under KeyframeMode::Disabled"
         );
     }
+
+    // bitstream が実際にデコード可能であることまで確認する
+    let decoded_frames = decode_frames(&packets);
+    assert_eq!(decoded_frames.len(), num_frames);
 }
 
 /// `KeyframeMode::Disabled` 指定時でも `force_keyframe = true` でキーフレームを挿入できることを確認する
@@ -520,19 +566,10 @@ fn test_keyframe_mode_disabled_with_force_keyframe() {
     let num_frames = 30;
     let force_index = 10;
 
-    let mut config = realtime_config(width, height, RateControlMode::Cbr);
-    config.enable_order_hint = Some(false);
-    config.enable_ref_frame_mvs = Some(false);
-    config.enable_angle_delta = Some(false);
-    config.intra_default_tx_only = Some(true);
-    config.coeff_cost_upd_freq = Some(3);
-    config.mode_cost_upd_freq = Some(3);
-    config.mv_cost_upd_freq = Some(3);
-    config.kf_mode = Some(KeyframeMode::Disabled);
-    config.g_lag_in_frames = Some(0);
-
+    let config = realtime_with_disabled_keyframe(width, height);
     let mut encoder = Encoder::new(config).expect("failed to create encoder");
     let mut keyframe_flags = Vec::new();
+    let mut packets = Vec::new();
 
     for i in 0..num_frames {
         let (y, u, v) = generate_dummy_i420(width as usize, height as usize, i);
@@ -547,13 +584,13 @@ fn test_keyframe_mode_disabled_with_force_keyframe() {
         encoder.encode(&image, &options).expect("failed to encode");
         while let Some(encoded) = encoder.next_frame() {
             keyframe_flags.push(encoded.is_keyframe());
-            let _ = encoded.data().expect("failed to get encoded data");
+            packets.push(encoded.data().expect("failed to get encoded data").to_vec());
         }
     }
     encoder.finish().expect("failed to finish");
     while let Some(encoded) = encoder.next_frame() {
         keyframe_flags.push(encoded.is_keyframe());
-        let _ = encoded.data().expect("failed to get encoded data");
+        packets.push(encoded.data().expect("failed to get encoded data").to_vec());
     }
 
     assert_eq!(
@@ -564,11 +601,134 @@ fn test_keyframe_mode_disabled_with_force_keyframe() {
     );
     for (i, &is_key) in keyframe_flags.iter().enumerate() {
         let expected = i == 0 || i == force_index;
-        assert_eq!(
-            is_key, expected,
-            "frame {i}: expected is_keyframe={expected}, got {is_key}"
+        assert_eq!(is_key, expected, "frame {i}");
+    }
+
+    let decoded_frames = decode_frames(&packets);
+    assert_eq!(decoded_frames.len(), num_frames);
+}
+
+/// `*_cost_upd_freq` の値域 (`0..=3`) を超える値を渡すと `Encoder::new` がエラーを返すことを確認する
+///
+/// libaom の `validate_config` で `RANGE_CHECK(extra_cfg, *_cost_upd_freq, 0, 3)` が
+/// 走るため、aom-rs 側のフィールド ID と control ID の紐付けが正しければ確実にエラーになる。
+#[test]
+fn test_cost_upd_freq_out_of_range_returns_error() {
+    type Setter = fn(&mut EncoderConfig);
+    let cases: &[(&str, Setter)] = &[
+        ("coeff_cost_upd_freq", |c| c.coeff_cost_upd_freq = Some(99)),
+        ("mode_cost_upd_freq", |c| c.mode_cost_upd_freq = Some(99)),
+        ("mv_cost_upd_freq", |c| c.mv_cost_upd_freq = Some(99)),
+    ];
+
+    for (name, set) in cases {
+        let mut config = good_quality_config(320, 240, RateControlMode::Cbr);
+        set(&mut config);
+        let result = Encoder::new(config);
+        assert!(
+            result.is_err(),
+            "{name} = Some(99) must be rejected by libaom RANGE_CHECK, but Encoder::new succeeded"
         );
     }
+}
+
+/// `KeyframeMode::Auto` 指定時に `kf_max_dist` を短く設定すると周期的にキーフレームが
+/// 挿入されることを確認する
+#[test]
+fn test_keyframe_mode_auto_inserts_periodic_keyframe() {
+    let width = 320;
+    let height = 240;
+    let num_frames = 30;
+
+    let mut config = good_quality_config(width, height, RateControlMode::Cbr);
+    config.kf_mode = Some(KeyframeMode::Auto);
+    // kf_min_dist != kf_max_dist でないと libaom 側で auto_key が無効化される
+    config.kf_min_dist = Some(0);
+    config.kf_max_dist = Some(5);
+
+    let mut encoder = Encoder::new(config).expect("failed to create encoder");
+    let mut keyframe_count = 0;
+
+    for i in 0..num_frames {
+        let (y, u, v) = generate_dummy_i420(width as usize, height as usize, i);
+        let options = EncodeOptions {
+            force_keyframe: false,
+        };
+        let image = ImageData::I420 {
+            y: &y,
+            u: &u,
+            v: &v,
+        };
+        encoder.encode(&image, &options).expect("failed to encode");
+        while let Some(encoded) = encoder.next_frame() {
+            if encoded.is_keyframe() {
+                keyframe_count += 1;
+            }
+            let _data = encoded.data().expect("failed to get encoded data");
+        }
+    }
+    encoder.finish().expect("failed to finish");
+    while let Some(encoded) = encoder.next_frame() {
+        if encoded.is_keyframe() {
+            keyframe_count += 1;
+        }
+        let _data = encoded.data().expect("failed to get encoded data");
+    }
+
+    // 30 フレーム / kf_max_dist=5 で先頭含め複数回挿入されるはず
+    assert!(
+        keyframe_count >= 2,
+        "expected at least 2 keyframes under KeyframeMode::Auto with kf_max_dist=5, got {keyframe_count}"
+    );
+}
+
+/// `KeyframeMode::Fixed` (deprecated alias) が `Disabled` と同一挙動になることを確認する
+///
+/// libaom 側で `AOM_KF_FIXED == AOM_KF_DISABLED == 0` であり、Rust 側 enum の
+/// 整合性を回帰として固定する。
+#[test]
+#[allow(deprecated)]
+fn test_keyframe_mode_fixed_behaves_like_disabled() {
+    let width = 320;
+    let height = 240;
+    let num_frames = 15;
+
+    let mut config = good_quality_config(width, height, RateControlMode::Cbr);
+    config.kf_mode = Some(KeyframeMode::Fixed);
+
+    let mut encoder = Encoder::new(config).expect("failed to create encoder");
+    let mut keyframe_count = 0;
+
+    for i in 0..num_frames {
+        let (y, u, v) = generate_dummy_i420(width as usize, height as usize, i);
+        let options = EncodeOptions {
+            force_keyframe: false,
+        };
+        let image = ImageData::I420 {
+            y: &y,
+            u: &u,
+            v: &v,
+        };
+        encoder.encode(&image, &options).expect("failed to encode");
+        while let Some(encoded) = encoder.next_frame() {
+            if encoded.is_keyframe() {
+                keyframe_count += 1;
+            }
+            let _data = encoded.data().expect("failed to get encoded data");
+        }
+    }
+    encoder.finish().expect("failed to finish");
+    while let Some(encoded) = encoder.next_frame() {
+        if encoded.is_keyframe() {
+            keyframe_count += 1;
+        }
+        let _data = encoded.data().expect("failed to get encoded data");
+    }
+
+    assert_eq!(
+        keyframe_count, 1,
+        "KeyframeMode::Fixed must behave like Disabled (only the first frame is a keyframe)"
+    );
 }
 
 // ============================================================================

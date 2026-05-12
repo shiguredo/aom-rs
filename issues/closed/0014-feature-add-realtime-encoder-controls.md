@@ -215,3 +215,45 @@ libaom 側から set した値を read-back する形の検証は本 issue で�
 
 - libaom control 群: `AV1E_SET_ENABLE_ORDER_HINT` / `AV1E_SET_ENABLE_REF_FRAME_MVS` / `AV1E_SET_ENABLE_ANGLE_DELTA` / `AV1E_SET_INTRA_DEFAULT_TX_ONLY` / `AV1E_SET_COEFF_COST_UPD_FREQ` / `AV1E_SET_MODE_COST_UPD_FREQ` / `AV1E_SET_MV_COST_UPD_FREQ`
 - libaom kf_mode 定数: `aom_kf_mode_AOM_KF_DISABLED` / `aom_kf_mode_AOM_KF_FIXED` (deprecated alias) / `aom_kf_mode_AOM_KF_AUTO`
+
+## 解決方法
+
+### 実装したもの
+
+- `EncoderConfig` に 7 フィールドを追加 (`enable_order_hint` / `enable_ref_frame_mvs` / `enable_angle_delta` / `intra_default_tx_only` / `coeff_cost_upd_freq` / `mode_cost_upd_freq` / `mv_cost_upd_freq`)
+- `EncoderConfig::new()` で 7 フィールドを `None` 初期化
+- `Encoder::apply_controls()` 末尾に 7 件の `set_control` 呼び出しを追加
+- `KeyframeMode` に `#[non_exhaustive]` を付与し、`Disabled` variant を追加、`Fixed` に `#[deprecated]` 属性と libaom 実態に合わせた rustdoc を付与
+- `KeyframeMode` → `aom_kf_mode` のマッピングを `map_kf_mode` private fn に切り出し
+- `EncoderConfig` にも `#[non_exhaustive]` を付与 (本 issue で 7 フィールド追加に伴う後方互換性確保のため、当初設計に追加)
+- 各 rustdoc を実装と libaom 仕様に合わせて補強 (初回フレーム必須 KEY、`kf_min_dist == kf_max_dist` で auto_key 無効化、`Usage::AllIntra` との矛盾、`enable_order_hint` 依存の silent 無効化、`intra_default_tx_only` の方向性、`*_cost_upd_freq` の libaom 値域チェック、`Encoder::reconfigure` の変更不可フィールド)
+
+### 設計からの変更点
+
+設計 §2 では `match` 式の直前に `#[allow(deprecated, clippy::match_same_arms)]` を expression attribute として付与する案を本案としていたが、stable Rust では expression attribute が unstable (issue #15701) で `cargo build` がエラーになったため、設計内で言及されていた代替案 (`map_kf_mode` private fn 切り出し) を採用した。
+
+### 重要な事実 (実装中に確認)
+
+shiguredo_aom がリンクする libaom (通常ビルド: `#if !CONFIG_REALTIME_ONLY` 側の `default_extra_cfg`) における 7 フィールドのデフォルト値は以下のとおりで、**`Usage::Realtime` を選んでも本フィールドのデフォルトは変わらない**:
+
+- `enable_order_hint = 1` / `enable_ref_frame_mvs = 1` / `enable_angle_delta = 1` (本 issue 推奨値の真逆)
+- `intra_default_tx_only = 0` (本 issue 推奨値の真逆)
+- `coeff_cost_upd_freq = COST_UPD_SB (= 0)` / `mode_cost_upd_freq = COST_UPD_SB` / `mv_cost_upd_freq = COST_UPD_SB` (本 issue 推奨値の真逆)
+
+`#else` 側 (CONFIG_REALTIME_ONLY ビルド時) のデフォルトは本 issue 推奨値と一致するが、aom-rs の `build.rs` は `CONFIG_REALTIME_ONLY` を有効化していないためこちらは使われない。したがって本 issue で 7 フィールドを Rust API から指定可能にした意義は明確に存在する (= `Usage::Realtime` を選んだだけでは AV1 リアルタイム配信向けの軽量設定にはならず、Rust API から個別に推奨値を指定する必要がある)。
+
+### テストカバレッジ
+
+設計 §3 のテスト 3 件 (typical_set / Disabled の自動 KEY 抑止 / Disabled + force_keyframe) に加えて、以下 3 件を追加した:
+
+- `test_cost_upd_freq_out_of_range_returns_error`: `*_cost_upd_freq` に `Some(99)` を渡すと libaom の `RANGE_CHECK` でエラーが返り、`Encoder::new` がそれを伝播することを 3 フィールドそれぞれで個別に検証
+- `test_keyframe_mode_auto_inserts_periodic_keyframe`: `KeyframeMode::Auto` + `kf_max_dist = Some(5)` で複数のキーフレームが打たれることを検証
+- `test_keyframe_mode_fixed_behaves_like_disabled`: `#[allow(deprecated)]` 付きで `KeyframeMode::Fixed` が `Disabled` と同一挙動 (先頭 1 枚のみ KEY) になることを検証
+
+設計 §3 のテスト 1 (`test_roundtrip_realtime_controls_typical_set`) は `Usage::GoodQuality` ベースに変更し、上記の「Realtime デフォルトは変わらない」事実を踏まえて 7 フィールドの設定が実際に効果を持つ経路を検証するようにした。テスト 2 / 3 は `force_keyframe` の 1 フレーム遅延が `Usage::GoodQuality` で発生するため `Usage::Realtime + g_lag_in_frames = Some(0)` ベースのままにした。テスト 2 / 3 の出力は `decode_frames` まで通してビットストリーム互換性を検証している。
+
+### 完走確認
+
+- `cargo build` / `cargo clippy --all-targets --all-features -- -D warnings` / `cargo fmt --all -- --check` 全通過
+- `cargo test --all` 31 件全件 pass (新規 6 件含む)
+- `cargo doc --no-deps` で本 PR 起源の警告ゼロ
