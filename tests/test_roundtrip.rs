@@ -1,6 +1,6 @@
 use shiguredo_aom::{
     Decoder, DecoderConfig, EncodeOptions, Encoder, EncoderConfig, ImageData, ImageFormat,
-    RateControlMode, ReconfigureParams, Usage,
+    KeyframeMode, RateControlMode, ReconfigureParams, Usage,
 };
 
 // ============================================================================
@@ -429,6 +429,146 @@ fn test_roundtrip_force_keyframe() {
     // デコードで復号できることを確認する
     let decoded_frames = decode_frames(&packets);
     assert_eq!(decoded_frames.len(), 15);
+}
+
+// ============================================================================
+// realtime 制御フラグテスト
+// ============================================================================
+
+/// realtime 配信向けの典型セットでカラーバーをラウンドトリップする (PSNR 検証)
+#[test]
+fn test_roundtrip_realtime_controls_typical_set() {
+    let mut config = realtime_config(320, 240, RateControlMode::Cbr);
+    config.enable_order_hint = Some(false);
+    config.enable_ref_frame_mvs = Some(false);
+    config.enable_angle_delta = Some(false);
+    config.intra_default_tx_only = Some(true);
+    config.coeff_cost_upd_freq = Some(3);
+    config.mode_cost_upd_freq = Some(3);
+    config.mv_cost_upd_freq = Some(3);
+    config.kf_mode = Some(KeyframeMode::Disabled);
+
+    roundtrip_colorbar(config, 30, 25.0);
+}
+
+/// `KeyframeMode::Disabled` 指定時に自動キーフレーム挿入が停止することを確認する
+#[test]
+fn test_keyframe_mode_disabled_suppresses_auto_keyframe() {
+    let width = 320;
+    let height = 240;
+    let num_frames = 30;
+
+    let mut config = realtime_config(width, height, RateControlMode::Cbr);
+    config.enable_order_hint = Some(false);
+    config.enable_ref_frame_mvs = Some(false);
+    config.enable_angle_delta = Some(false);
+    config.intra_default_tx_only = Some(true);
+    config.coeff_cost_upd_freq = Some(3);
+    config.mode_cost_upd_freq = Some(3);
+    config.mv_cost_upd_freq = Some(3);
+    config.kf_mode = Some(KeyframeMode::Disabled);
+    config.g_lag_in_frames = Some(0);
+
+    let mut encoder = Encoder::new(config).expect("failed to create encoder");
+    let mut keyframe_flags = Vec::new();
+
+    for i in 0..num_frames {
+        let (y, u, v) = generate_dummy_i420(width as usize, height as usize, i);
+        let options = EncodeOptions {
+            force_keyframe: false,
+        };
+        let image = ImageData::I420 {
+            y: &y,
+            u: &u,
+            v: &v,
+        };
+        encoder.encode(&image, &options).expect("failed to encode");
+        while let Some(encoded) = encoder.next_frame() {
+            keyframe_flags.push(encoded.is_keyframe());
+            let _ = encoded.data().expect("failed to get encoded data");
+        }
+    }
+    encoder.finish().expect("failed to finish");
+    while let Some(encoded) = encoder.next_frame() {
+        keyframe_flags.push(encoded.is_keyframe());
+        let _ = encoded.data().expect("failed to get encoded data");
+    }
+
+    assert_eq!(
+        keyframe_flags.len(),
+        num_frames,
+        "expected {num_frames} encoded frames, got {}",
+        keyframe_flags.len()
+    );
+    assert!(
+        keyframe_flags[0],
+        "expected the first frame to be a keyframe"
+    );
+    for (i, &is_key) in keyframe_flags.iter().enumerate().skip(1) {
+        assert!(
+            !is_key,
+            "expected frame {i} to be a non-keyframe under KeyframeMode::Disabled"
+        );
+    }
+}
+
+/// `KeyframeMode::Disabled` 指定時でも `force_keyframe = true` でキーフレームを挿入できることを確認する
+#[test]
+fn test_keyframe_mode_disabled_with_force_keyframe() {
+    let width = 320;
+    let height = 240;
+    let num_frames = 30;
+    let force_index = 10;
+
+    let mut config = realtime_config(width, height, RateControlMode::Cbr);
+    config.enable_order_hint = Some(false);
+    config.enable_ref_frame_mvs = Some(false);
+    config.enable_angle_delta = Some(false);
+    config.intra_default_tx_only = Some(true);
+    config.coeff_cost_upd_freq = Some(3);
+    config.mode_cost_upd_freq = Some(3);
+    config.mv_cost_upd_freq = Some(3);
+    config.kf_mode = Some(KeyframeMode::Disabled);
+    config.g_lag_in_frames = Some(0);
+
+    let mut encoder = Encoder::new(config).expect("failed to create encoder");
+    let mut keyframe_flags = Vec::new();
+
+    for i in 0..num_frames {
+        let (y, u, v) = generate_dummy_i420(width as usize, height as usize, i);
+        let options = EncodeOptions {
+            force_keyframe: i == force_index,
+        };
+        let image = ImageData::I420 {
+            y: &y,
+            u: &u,
+            v: &v,
+        };
+        encoder.encode(&image, &options).expect("failed to encode");
+        while let Some(encoded) = encoder.next_frame() {
+            keyframe_flags.push(encoded.is_keyframe());
+            let _ = encoded.data().expect("failed to get encoded data");
+        }
+    }
+    encoder.finish().expect("failed to finish");
+    while let Some(encoded) = encoder.next_frame() {
+        keyframe_flags.push(encoded.is_keyframe());
+        let _ = encoded.data().expect("failed to get encoded data");
+    }
+
+    assert_eq!(
+        keyframe_flags.len(),
+        num_frames,
+        "expected {num_frames} encoded frames, got {}",
+        keyframe_flags.len()
+    );
+    for (i, &is_key) in keyframe_flags.iter().enumerate() {
+        let expected = i == 0 || i == force_index;
+        assert_eq!(
+            is_key, expected,
+            "frame {i}: expected is_keyframe={expected}, got {is_key}"
+        );
+    }
 }
 
 // ============================================================================

@@ -1,6 +1,7 @@
 # realtime 配信向けの制御フラグを EncoderConfig と KeyframeMode に追加する
 
 Created: 2026-05-12
+Completed: 2026-05-12
 Model: Opus 4.7
 
 ## 概要

@@ -595,10 +595,21 @@ pub enum RateControlMode {
 
 /// キーフレーム配置モード (kf_mode)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum KeyframeMode {
-    /// 固定間隔
+    /// エンコーダー側のキーフレーム自動配置を停止する
+    ///
+    /// 外部から `EncodeOptions::force_keyframe = true` を指定したフレームのみが
+    /// キーフレームになる。
+    Disabled,
+
+    /// `AOM_KF_FIXED` (libaom の deprecated エイリアス、`Disabled` と同一挙動)
+    #[deprecated(
+        note = "AOM_KF_FIXED is a deprecated alias of AOM_KF_DISABLED in libaom; use KeyframeMode::Disabled"
+    )]
     Fixed,
-    /// 自動配置
+
+    /// エンコーダーが最適配置を自動決定する
     Auto,
 }
 
@@ -1120,6 +1131,30 @@ pub struct EncoderConfig {
 
     /// AV1E_SET_MAX_REFERENCE_FRAMES: 最大参照フレーム数
     pub max_reference_frames: Option<u32>,
+
+    /// AV1E_SET_ENABLE_ORDER_HINT: frame order hint 有効化
+    pub enable_order_hint: Option<bool>,
+
+    /// AV1E_SET_ENABLE_REF_FRAME_MVS: ref frame mvs (mfmv) 有効化
+    ///
+    /// `enable_order_hint` を `false` に指定した場合、シーケンスヘッダーの `enable_ref_frame_mvs`
+    /// は libaom 内部で 0 として書き込まれるため、mfmv は実質的に無効化される。
+    pub enable_ref_frame_mvs: Option<bool>,
+
+    /// AV1E_SET_ENABLE_ANGLE_DELTA: intra 角度予測 delta 有効化
+    pub enable_angle_delta: Option<bool>,
+
+    /// AV1E_SET_INTRA_DEFAULT_TX_ONLY: intra で default TX type のみ使う (TX search 削減)
+    pub intra_default_tx_only: Option<bool>,
+
+    /// AV1E_SET_COEFF_COST_UPD_FREQ: 係数コスト更新頻度 (0: SB, 1: SB row, 2: tile, 3: off)
+    pub coeff_cost_upd_freq: Option<u32>,
+
+    /// AV1E_SET_MODE_COST_UPD_FREQ: モードコスト更新頻度 (同上)
+    pub mode_cost_upd_freq: Option<u32>,
+
+    /// AV1E_SET_MV_COST_UPD_FREQ: MV コスト更新頻度 (同上)
+    pub mv_cost_upd_freq: Option<u32>,
 }
 
 impl EncoderConfig {
@@ -1232,6 +1267,13 @@ impl EncoderConfig {
             enable_superres: None,
             gf_max_pyramid_height: None,
             max_reference_frames: None,
+            enable_order_hint: None,
+            enable_ref_frame_mvs: None,
+            enable_angle_delta: None,
+            intra_default_tx_only: None,
+            coeff_cost_upd_freq: None,
+            mode_cost_upd_freq: None,
+            mv_cost_upd_freq: None,
         }
     }
 }
@@ -1266,6 +1308,16 @@ pub struct Encoder {
     frame_count: usize,
     image_format: ImageFormat,
     plane_sizes: PlaneSizes,
+}
+
+/// `KeyframeMode` を libaom の `aom_kf_mode` 定数にマップする
+#[allow(deprecated, clippy::match_same_arms)]
+fn map_kf_mode(mode: KeyframeMode) -> sys::aom_kf_mode {
+    match mode {
+        KeyframeMode::Disabled => sys::aom_kf_mode_AOM_KF_DISABLED,
+        KeyframeMode::Fixed => sys::aom_kf_mode_AOM_KF_FIXED,
+        KeyframeMode::Auto => sys::aom_kf_mode_AOM_KF_AUTO,
+    }
 }
 
 impl Encoder {
@@ -1412,10 +1464,7 @@ impl Encoder {
             aom_config.fwd_kf_enabled = if enabled { 1 } else { 0 };
         }
         if let Some(mode) = config.kf_mode {
-            aom_config.kf_mode = match mode {
-                KeyframeMode::Fixed => sys::aom_kf_mode_AOM_KF_FIXED,
-                KeyframeMode::Auto => sys::aom_kf_mode_AOM_KF_AUTO,
-            };
+            aom_config.kf_mode = map_kf_mode(mode);
         }
         if let Some(v) = config.kf_min_dist {
             aom_config.kf_min_dist = v as _;
@@ -1947,6 +1996,62 @@ impl Encoder {
         if let Some(v) = config.max_reference_frames {
             self.set_control(
                 sys::aome_enc_control_id_AV1E_SET_MAX_REFERENCE_FRAMES as c_int,
+                v as c_int,
+            )?;
+        }
+
+        // AV1E_SET_ENABLE_ORDER_HINT
+        if let Some(v) = config.enable_order_hint {
+            self.set_control(
+                sys::aome_enc_control_id_AV1E_SET_ENABLE_ORDER_HINT as c_int,
+                if v { 1 } else { 0 },
+            )?;
+        }
+
+        // AV1E_SET_ENABLE_REF_FRAME_MVS
+        if let Some(v) = config.enable_ref_frame_mvs {
+            self.set_control(
+                sys::aome_enc_control_id_AV1E_SET_ENABLE_REF_FRAME_MVS as c_int,
+                if v { 1 } else { 0 },
+            )?;
+        }
+
+        // AV1E_SET_ENABLE_ANGLE_DELTA
+        if let Some(v) = config.enable_angle_delta {
+            self.set_control(
+                sys::aome_enc_control_id_AV1E_SET_ENABLE_ANGLE_DELTA as c_int,
+                if v { 1 } else { 0 },
+            )?;
+        }
+
+        // AV1E_SET_INTRA_DEFAULT_TX_ONLY
+        if let Some(v) = config.intra_default_tx_only {
+            self.set_control(
+                sys::aome_enc_control_id_AV1E_SET_INTRA_DEFAULT_TX_ONLY as c_int,
+                if v { 1 } else { 0 },
+            )?;
+        }
+
+        // AV1E_SET_COEFF_COST_UPD_FREQ
+        if let Some(v) = config.coeff_cost_upd_freq {
+            self.set_control(
+                sys::aome_enc_control_id_AV1E_SET_COEFF_COST_UPD_FREQ as c_int,
+                v as c_int,
+            )?;
+        }
+
+        // AV1E_SET_MODE_COST_UPD_FREQ
+        if let Some(v) = config.mode_cost_upd_freq {
+            self.set_control(
+                sys::aome_enc_control_id_AV1E_SET_MODE_COST_UPD_FREQ as c_int,
+                v as c_int,
+            )?;
+        }
+
+        // AV1E_SET_MV_COST_UPD_FREQ
+        if let Some(v) = config.mv_cost_upd_freq {
+            self.set_control(
+                sys::aome_enc_control_id_AV1E_SET_MV_COST_UPD_FREQ as c_int,
                 v as c_int,
             )?;
         }
