@@ -245,7 +245,7 @@ while let Some(frame) = decoder.next_frame() {
 
 ### `EncoderConfig`
 
-フィールド名は libaom の `aom_codec_enc_cfg_t` および `aom_codec_control` の制御パラメータに準拠しています。
+フィールド名は libaom の `aom_codec_enc_cfg_t` および `aom_codec_control` の制御パラメータに準拠しています。`#[non_exhaustive]` が付与されているため、構造体は `EncoderConfig::new()` 経由で生成してください。
 
 #### 基本設定
 
@@ -336,6 +336,9 @@ while let Some(frame) = decoder.next_frame() {
 | `deltaq_mode` | `Option<u32>` | デルタ Q モード |
 | `lossless` | `Option<bool>` | ロスレスモード |
 | `noise_sensitivity` | `Option<u32>` | ノイズ感度 |
+| `coeff_cost_upd_freq` | `Option<u32>` | 係数 RD コストの更新頻度 (0: SB ごと, 1: SB 行ごと, 2: タイルごと, 3: 無効) |
+| `mode_cost_upd_freq` | `Option<u32>` | モード RD コストの更新頻度 (0: SB ごと, 1: SB 行ごと, 2: タイルごと, 3: 無効) |
+| `mv_cost_upd_freq` | `Option<u32>` | MV RD コストの更新頻度 (0: SB ごと, 1: SB 行ごと, 2: タイルごと, 3: 無効) |
 
 #### フィルター制御
 
@@ -357,6 +360,8 @@ while let Some(frame) = decoder.next_frame() {
 | `enable_warped_motion` | `Option<bool>` | ワープモーション有効化 |
 | `enable_tpl_model` | `Option<bool>` | TPL モデル有効化 |
 | `enable_keyframe_filtering` | `Option<u32>` | キーフレームフィルタリング (0-2) |
+| `enable_order_hint` | `Option<bool>` | order hint ツール有効化 (sequence-level) |
+| `enable_ref_frame_mvs` | `Option<bool>` | 参照フレーム動きベクトル有効化 (`enable_order_hint` が `false` のときは libaom 内部で silent に無効化される) |
 | `min_gf_interval` | `Option<u32>` | 最小 GF 間隔 |
 | `max_gf_interval` | `Option<u32>` | 最大 GF 間隔 |
 | `gf_max_pyramid_height` | `Option<u32>` | GF 最大ピラミッド高さ |
@@ -372,6 +377,8 @@ while let Some(frame) = decoder.next_frame() {
 | `enable_cfl_intra` | `Option<bool>` | CfL Intra 有効化 |
 | `enable_palette` | `Option<bool>` | パレットモード有効化 |
 | `enable_intrabc` | `Option<bool>` | IntraBC 有効化 |
+| `enable_angle_delta` | `Option<bool>` | 角度デルタ Intra 有効化 (sequence-level) |
+| `intra_default_tx_only` | `Option<bool>` | Intra ブロックの TX 探索をデフォルト変換のみに制限する (`true` で TX 探索を削減して realtime 向けに高速化) |
 
 #### パーティション
 
@@ -466,10 +473,13 @@ while let Some(frame) = decoder.next_frame() {
 
 ### `KeyframeMode`
 
+`#[non_exhaustive]` が付与されているため、将来的なバリアント追加に備えてください。
+
 | バリアント | 説明 |
 |---|---|
-| `Fixed` | 固定間隔 |
-| `Auto` | 自動配置 |
+| `Disabled` | キーフレーム自動挿入を無効化する (`AOM_KF_DISABLED`) |
+| `Fixed` | `Disabled` の deprecated エイリアス (libaom の `AOM_KF_FIXED` は `AOM_KF_DISABLED` と同値) |
+| `Auto` | 自動配置 (`AOM_KF_AUTO`) |
 
 ### `EncodingPass`
 

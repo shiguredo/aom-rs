@@ -60,6 +60,10 @@ fn main() {
                 "pub struct aom_codec_iter_t;",
                 "pub struct aom_codec_ctx;",
                 "pub struct aom_codec_err_t;",
+                "pub type aom_kf_mode = u32;",
+                "pub const aom_kf_mode_AOM_KF_DISABLED: aom_kf_mode = 0;",
+                "pub const aom_kf_mode_AOM_KF_FIXED: aom_kf_mode = 0;",
+                "pub const aom_kf_mode_AOM_KF_AUTO: aom_kf_mode = 1;",
             ),
         )
         .expect("write file error");

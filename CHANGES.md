@@ -35,6 +35,8 @@
   - @voluntas
 - [FIX] `KeyframeMode::Fixed` の rustdoc を libaom 実態 (`AOM_KF_DISABLED` の deprecated エイリアス) に合わせて修正し、`#[deprecated]` 属性を付与する
   - @voluntas
+- [FIX] `DOCS_RS=1` ビルドでダミー bindings に `aom_kf_mode` 型と関連定数が不足し `cargo doc --no-deps` が失敗する問題を修正する
+  - @voluntas
 
 ### misc
 
@@ -47,6 +49,8 @@
 - `KeyframeMode` から libaom の `aom_kf_mode` 定数へのマッピングを `map_kf_mode` private fn に切り出す
   - @voluntas
 - realtime 制御フラグ周辺のテストを拡充する (`*_cost_upd_freq` 値域エラー / `KeyframeMode::Auto` / `KeyframeMode::Fixed` の deprecated alias 同値性)
+  - @voluntas
+- `README.md` の `EncoderConfig` / `KeyframeMode` セクションに realtime 配信向けの追加フィールドと `#[non_exhaustive]` 注記を反映する
   - @voluntas
 
 ## 2026.1.0
