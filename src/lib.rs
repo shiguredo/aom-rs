@@ -595,10 +595,36 @@ pub enum RateControlMode {
 
 /// キーフレーム配置モード (kf_mode)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum KeyframeMode {
-    /// 固定間隔
+    /// エンコーダー側のキーフレーム自動配置を停止する
+    ///
+    /// 自動キーフレーム挿入 (シーンチェンジ検出 / `kf_max_dist` ベースの周期挿入) が
+    /// 完全に止まる。追加のキーフレームは [`EncodeOptions::force_keyframe`] が `true` の
+    /// フレームでのみ挿入される。
+    ///
+    /// ただし AV1 ビットストリーム仕様により、シーケンス先頭のフレームは常に
+    /// キーフレームとなる。
+    ///
+    /// 副作用: [`EncoderConfig::kf_max_dist`] に `Some(0)` を併用すると、libaom 内部で
+    /// `enable_keyframe_filtering` が 0 に強制上書きされる。
+    Disabled,
+
+    /// `AOM_KF_FIXED` (libaom の deprecated エイリアス、`Disabled` と同一挙動)
+    #[deprecated(
+        note = "AOM_KF_FIXED is a deprecated alias of AOM_KF_DISABLED in libaom; use KeyframeMode::Disabled"
+    )]
     Fixed,
-    /// 自動配置
+
+    /// エンコーダーが最適配置を自動決定する
+    ///
+    /// libaom の `AOM_KF_AUTO` に対応する。`kf_min_dist` と `kf_max_dist` の範囲内で
+    /// シーンチェンジ検出と周期挿入により自動配置される。
+    ///
+    /// 注意: libaom は `kf_min_dist == kf_max_dist` のとき内部的に `auto_key` を 0 に
+    /// 倒すため、本 variant を指定していても自動キーフレーム配置が無効化される。
+    /// また、[`Usage::AllIntra`] では libaom の既定が `AOM_KF_DISABLED` であり、
+    /// `Auto` を併用すると AllIntra (= 全 I フレーム) の意味と矛盾する組み合わせになる。
     Auto,
 }
 
@@ -812,6 +838,7 @@ fn is_profile_supported(profile_id: u32) -> bool {
 ///
 /// `Option` のフィールドは `None` の場合、libaom のデフォルト値がそのまま使われる。
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct EncoderConfig {
     // --- 入力画像設定 (libaom 外) ---
     /// 入力画像フォーマット
@@ -1120,6 +1147,57 @@ pub struct EncoderConfig {
 
     /// AV1E_SET_MAX_REFERENCE_FRAMES: 最大参照フレーム数
     pub max_reference_frames: Option<u32>,
+
+    // --- realtime 配信向け sequence-level 機能フラグ ---
+    //
+    // 以下 3 フィールドは AV1 ビットストリームの sequence header に書き込まれる機能フラグ。
+    // shiguredo_aom がリンクする libaom (通常ビルド) のデフォルトは GoodQuality 寄り
+    // (`= 1`) で、`Usage::Realtime` を選んでも本フィールドのデフォルトは変わらない。
+    // realtime 配信用途では明示的に `Some(false)` を指定して機能を絞り、RD 探索コストと
+    // ビットストリーム複雑度を抑えるのが定型。
+    /// AV1E_SET_ENABLE_ORDER_HINT: frame order hint 有効化
+    pub enable_order_hint: Option<bool>,
+
+    /// AV1E_SET_ENABLE_REF_FRAME_MVS: ref frame mvs (mfmv) 有効化
+    ///
+    /// [`Self::enable_order_hint`] を `Some(false)` に指定した場合、libaom 内部で
+    /// `tool_cfg->ref_frame_mvs_present` が `enable_ref_frame_mvs & enable_order_hint` の
+    /// 積として計算される (libaom `av1/av1_cx_iface.c`)。そのため `enable_ref_frame_mvs`
+    /// に `Some(true)` を渡しても mfmv は silent に無効化される (libaom はエラーを
+    /// 返さない)。
+    pub enable_ref_frame_mvs: Option<bool>,
+
+    /// AV1E_SET_ENABLE_ANGLE_DELTA: intra 角度予測 delta 有効化
+    pub enable_angle_delta: Option<bool>,
+
+    // --- realtime 配信向け TX search 削減 ---
+    /// AV1E_SET_INTRA_DEFAULT_TX_ONLY: intra で default TX type のみ使う
+    ///
+    /// `Some(true)` で TX search を削減する方向の制御。realtime 配信用途では `Some(true)` を
+    /// 指定するのが定型。libaom 通常ビルドのデフォルトは `0` (= TX search を行う)。
+    pub intra_default_tx_only: Option<bool>,
+
+    // --- realtime 配信向け RD コスト更新頻度 ---
+    //
+    // 以下 3 フィールドは libaom 内部の探索コスト更新頻度を指定する。有効値は `0..=3`:
+    //
+    // - `0` = `COST_UPD_SB`: SB ごとに更新 (デフォルト、最も重い)
+    // - `1` = `COST_UPD_SBROW`: SB row ごとに更新
+    // - `2` = `COST_UPD_TILE`: tile ごとに更新
+    // - `3` = `COST_UPD_OFF`: 更新しない (最も軽い)
+    //
+    // shiguredo_aom がリンクする libaom (通常ビルド) のデフォルトは `COST_UPD_SB` (= 0)
+    // で、`Usage::Realtime` を選んでも本フィールドのデフォルトは変わらない。realtime
+    // 配信用途では明示的に `Some(3)` (= OFF) を指定して per-frame の RD コスト再計算を
+    // 省くのが定型。値域外を渡した場合は libaom 側で `Encoder::new` がエラーを返す。
+    /// AV1E_SET_COEFF_COST_UPD_FREQ: 係数コスト更新頻度
+    pub coeff_cost_upd_freq: Option<u32>,
+
+    /// AV1E_SET_MODE_COST_UPD_FREQ: モードコスト更新頻度
+    pub mode_cost_upd_freq: Option<u32>,
+
+    /// AV1E_SET_MV_COST_UPD_FREQ: MV コスト更新頻度
+    pub mv_cost_upd_freq: Option<u32>,
 }
 
 impl EncoderConfig {
@@ -1232,6 +1310,13 @@ impl EncoderConfig {
             enable_superres: None,
             gf_max_pyramid_height: None,
             max_reference_frames: None,
+            enable_order_hint: None,
+            enable_ref_frame_mvs: None,
+            enable_angle_delta: None,
+            intra_default_tx_only: None,
+            coeff_cost_upd_freq: None,
+            mode_cost_upd_freq: None,
+            mv_cost_upd_freq: None,
         }
     }
 }
@@ -1266,6 +1351,18 @@ pub struct Encoder {
     frame_count: usize,
     image_format: ImageFormat,
     plane_sizes: PlaneSizes,
+}
+
+// AOM_KF_FIXED は libaom 上で AOM_KF_DISABLED の deprecated alias (両者とも整数値 0)
+// であるため、Disabled と Fixed の arm が同一値にマップされることは仕様。
+// 永続的に clippy::match_same_arms を抑止する。
+#[allow(deprecated, clippy::match_same_arms)]
+fn map_kf_mode(mode: KeyframeMode) -> sys::aom_kf_mode {
+    match mode {
+        KeyframeMode::Disabled => sys::aom_kf_mode_AOM_KF_DISABLED,
+        KeyframeMode::Fixed => sys::aom_kf_mode_AOM_KF_FIXED,
+        KeyframeMode::Auto => sys::aom_kf_mode_AOM_KF_AUTO,
+    }
 }
 
 impl Encoder {
@@ -1412,10 +1509,7 @@ impl Encoder {
             aom_config.fwd_kf_enabled = if enabled { 1 } else { 0 };
         }
         if let Some(mode) = config.kf_mode {
-            aom_config.kf_mode = match mode {
-                KeyframeMode::Fixed => sys::aom_kf_mode_AOM_KF_FIXED,
-                KeyframeMode::Auto => sys::aom_kf_mode_AOM_KF_AUTO,
-            };
+            aom_config.kf_mode = map_kf_mode(mode);
         }
         if let Some(v) = config.kf_min_dist {
             aom_config.kf_min_dist = v as _;
@@ -1951,6 +2045,62 @@ impl Encoder {
             )?;
         }
 
+        // AV1E_SET_ENABLE_ORDER_HINT
+        if let Some(v) = config.enable_order_hint {
+            self.set_control(
+                sys::aome_enc_control_id_AV1E_SET_ENABLE_ORDER_HINT as c_int,
+                if v { 1 } else { 0 },
+            )?;
+        }
+
+        // AV1E_SET_ENABLE_REF_FRAME_MVS
+        if let Some(v) = config.enable_ref_frame_mvs {
+            self.set_control(
+                sys::aome_enc_control_id_AV1E_SET_ENABLE_REF_FRAME_MVS as c_int,
+                if v { 1 } else { 0 },
+            )?;
+        }
+
+        // AV1E_SET_ENABLE_ANGLE_DELTA
+        if let Some(v) = config.enable_angle_delta {
+            self.set_control(
+                sys::aome_enc_control_id_AV1E_SET_ENABLE_ANGLE_DELTA as c_int,
+                if v { 1 } else { 0 },
+            )?;
+        }
+
+        // AV1E_SET_INTRA_DEFAULT_TX_ONLY
+        if let Some(v) = config.intra_default_tx_only {
+            self.set_control(
+                sys::aome_enc_control_id_AV1E_SET_INTRA_DEFAULT_TX_ONLY as c_int,
+                if v { 1 } else { 0 },
+            )?;
+        }
+
+        // AV1E_SET_COEFF_COST_UPD_FREQ
+        if let Some(v) = config.coeff_cost_upd_freq {
+            self.set_control(
+                sys::aome_enc_control_id_AV1E_SET_COEFF_COST_UPD_FREQ as c_int,
+                v as c_int,
+            )?;
+        }
+
+        // AV1E_SET_MODE_COST_UPD_FREQ
+        if let Some(v) = config.mode_cost_upd_freq {
+            self.set_control(
+                sys::aome_enc_control_id_AV1E_SET_MODE_COST_UPD_FREQ as c_int,
+                v as c_int,
+            )?;
+        }
+
+        // AV1E_SET_MV_COST_UPD_FREQ
+        if let Some(v) = config.mv_cost_upd_freq {
+            self.set_control(
+                sys::aome_enc_control_id_AV1E_SET_MV_COST_UPD_FREQ as c_int,
+                v as c_int,
+            )?;
+        }
+
         Ok(())
     }
 
@@ -1966,6 +2116,14 @@ impl Encoder {
     /// `aom_codec_enc_config_set()` を呼び出して反映する。control 系設定
     /// (`AOME_SET_CPUUSED` 等) は libaom 内部状態に保持され、本メソッドの
     /// 影響を受けない。
+    ///
+    /// 本メソッドで変更可能なのは [`ReconfigureParams`] のフィールドだけ。
+    /// sequence-level 機能フラグ ([`EncoderConfig::enable_order_hint`] /
+    /// [`EncoderConfig::enable_ref_frame_mvs`] 等)、RD コスト更新頻度
+    /// ([`EncoderConfig::coeff_cost_upd_freq`] 等)、キーフレーム配置モード
+    /// ([`EncoderConfig::kf_mode`])、その他 control 系設定は midstream で変更すると
+    /// ビットストリーム互換が壊れるため、本メソッドからは変更できない。これらを
+    /// 変更したい場合は [`Encoder`] を破棄して新しいインスタンスを生成する必要がある。
     ///
     /// # Errors
     ///
