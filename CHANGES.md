@@ -11,6 +11,12 @@
 
 ## develop
 
+- [CHANGE] `EncoderConfig` に `#[non_exhaustive]` を付与する
+  - @voluntas
+- [CHANGE] `KeyframeMode` に `#[non_exhaustive]` を付与する
+  - @voluntas
+- [CHANGE] `KeyframeMode` に `Disabled` variant を追加する
+  - @voluntas
 - [ADD] `Encoder::reconfigure(&ReconfigureParams)` を追加してターゲットビットレートをランタイム変更可能にする
   - @voluntas
 - [ADD] `EncoderConfig` に `enable_order_hint` フィールドを追加する
@@ -27,11 +33,7 @@
   - @voluntas
 - [ADD] `EncoderConfig` に `mv_cost_upd_freq` フィールドを追加する
   - @voluntas
-- [CHANGE] `EncoderConfig` に `#[non_exhaustive]` を付与する
-  - @voluntas
-- [CHANGE] `KeyframeMode` に `#[non_exhaustive]` を付与する
-  - @voluntas
-- [CHANGE] `KeyframeMode` に `Disabled` variant を追加する
+- [UPDATE] libaom を v3.13.2 から v3.14.1 に更新する
   - @voluntas
 - [FIX] `KeyframeMode::Fixed` の rustdoc を libaom 実態 (`AOM_KF_DISABLED` の deprecated エイリアス) に合わせて修正し、`#[deprecated]` 属性を付与する
   - @voluntas
@@ -40,17 +42,17 @@
 
 ### misc
 
-- `examples/midstream_reconfigure.rs` を追加し、30fps エンコード途中でビットレートを切り替える典型パターンを示す
+- [ADD] `examples/midstream_reconfigure.rs` を追加し、30fps エンコード途中でビットレートを切り替える典型パターンを示す
   - @voluntas
-- `Encoder::encode()` / `finish()` / `reconfigure()` の `next_frame()` ガードを `check_iter_drained` ヘルパーに集約する
+- [ADD] reconfigure 周辺の単体テストを拡充する (ビットレート反映の検証 / PSNR 検証 / force_keyframe との併用 / 失敗時のロールバック検証)
   - @voluntas
-- reconfigure 周辺の単体テストを拡充する (ビットレート反映の検証 / PSNR 検証 / force_keyframe との併用 / 失敗時のロールバック検証)
+- [ADD] realtime 制御フラグ周辺のテストを拡充する (`*_cost_upd_freq` 値域エラー / `KeyframeMode::Auto` / `KeyframeMode::Fixed` の deprecated alias 同値性)
   - @voluntas
-- `KeyframeMode` から libaom の `aom_kf_mode` 定数へのマッピングを `map_kf_mode` private fn に切り出す
+- [UPDATE] `Encoder::encode()` / `finish()` / `reconfigure()` の `next_frame()` ガードを `check_iter_drained` ヘルパーに集約する
   - @voluntas
-- realtime 制御フラグ周辺のテストを拡充する (`*_cost_upd_freq` 値域エラー / `KeyframeMode::Auto` / `KeyframeMode::Fixed` の deprecated alias 同値性)
+- [UPDATE] `KeyframeMode` から libaom の `aom_kf_mode` 定数へのマッピングを `map_kf_mode` private fn に切り出す
   - @voluntas
-- `README.md` の `EncoderConfig` / `KeyframeMode` セクションに realtime 配信向けの追加フィールドと `#[non_exhaustive]` 注記を反映する
+- [UPDATE] `README.md` の `EncoderConfig` / `KeyframeMode` セクションに realtime 配信向けの追加フィールドと `#[non_exhaustive]` 注記を反映する
   - @voluntas
 
 ## 2026.1.0

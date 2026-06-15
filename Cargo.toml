@@ -3,26 +3,26 @@ name = "shiguredo_aom"
 version = "2026.2.0-canary.1"
 edition = "2024"
 rust-version = "1.88"
-authors = ["Shiguredo Inc."]
-license = "Apache-2.0"
 description = "Rust bindings for AOM (Alliance for Open Media) codec library"
+readme = "README.md"
 homepage = "https://github.com/shiguredo/aom-rs"
 repository = "https://github.com/shiguredo/aom-rs"
-readme = "README.md"
+license = "Apache-2.0"
 build = "build.rs"
-include = ["/src/**/*", "/build.rs", "/README.md", "/LICENSE"]
+include = ["/LICENSE", "/README.md", "/build.rs", "/src/**/*"]
 
-[features]
-source-build = []
+# 以降は外部ライブラリビルド用のメタデータ
+# (この内容は build.rs の中からのみ参照される)
+[package.metadata.external-dependencies.aom]
+url = "https://aomedia.googlesource.com/aom"
+version = "v3.14.1"
 
 [dependencies]
 
 [build-dependencies]
 bindgen = "0.72"
 shiguredo_cmake = "4.3"
-shiguredo_toml = "2026.1"
+shiguredo_toml = "2026.2"
 
-# 以降は外部ライブラリビルド用のメタデータ
-# (この内容は build.rs の中からのみ参照される)
-[package.metadata.external-dependencies]
-aom = { url = "https://aomedia.googlesource.com/aom", version = "v3.13.2" }
+[features]
+source-build = []
