@@ -48,6 +48,8 @@
   - @voluntas
 - [ADD] realtime 制御フラグ周辺のテストを拡充する (`*_cost_upd_freq` 値域エラー / `KeyframeMode::Auto` / `KeyframeMode::Fixed` の deprecated alias 同値性)
   - @voluntas
+- [ADD] CI に ubuntu-26.04 / ubuntu-26.04-arm を追加する
+  - @voluntas
 - [UPDATE] `Encoder::encode()` / `finish()` / `reconfigure()` の `next_frame()` ガードを `check_iter_drained` ヘルパーに集約する
   - @voluntas
 - [UPDATE] `KeyframeMode` から libaom の `aom_kf_mode` 定数へのマッピングを `map_kf_mode` private fn に切り出す
