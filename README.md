@@ -158,7 +158,7 @@ encoder.encode(&image, &EncodeOptions { force_keyframe: true })?;
 
 // エンコード済みフレームを取得
 while let Some(frame) = encoder.next_frame() {
-    let data = frame.data();
+    let data = frame.data()?;
     let is_key = frame.is_keyframe();
     println!("encoded: {} bytes, keyframe: {}", data.len(), is_key);
 }
@@ -183,9 +183,9 @@ decoder.decode(&compressed_data)?;
 
 // デコード済みフレームを取得
 while let Some(frame) = decoder.next_frame() {
-    let y = frame.y_plane();
-    let u = frame.u_plane();
-    let v = frame.v_plane();
+    let y = frame.y_plane()?;
+    let u = frame.u_plane()?;
+    let v = frame.v_plane()?;
     let is_high_depth = frame.is_high_depth();
     println!("{}x{} high_depth={}", frame.width(), frame.height(), is_high_depth);
 }

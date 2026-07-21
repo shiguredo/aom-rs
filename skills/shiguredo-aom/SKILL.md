@@ -10,8 +10,8 @@ description: 時雨堂の libaom (AV1) Rust バインディング shiguredo_aom 
 ## バージョン情報
 
 - crate 名: `shiguredo_aom`
-- バージョン: 2026.1.0
-- libaom バージョン: v3.13.2
+- バージョン: 2026.2.0-canary.2
+- libaom バージョン: v3.14.1
 - Rust Edition: 2024
 - 最小 Rust バージョン: 1.88
 - ライセンス: Apache-2.0
@@ -391,7 +391,7 @@ while let Some(frame) = decoder.next_frame() {
 - 16-bit フォーマット (`I42016` / `I42216` / `I44416`) のプレーンは `&[u8]` 渡し。
 - libaom はソフトウェアエンコーダーであり、`hardware_accelerated` は常に `false`。
 - prebuilt バイナリ非対応プラットフォームでは `source-build` feature を有効にし、NASM を用意する。
-- `Decoder` は `Send` だが `Encoder` はデフォルトで `Send` ではない (FFI ポインタを内部に保持)。スレッド境界を越える場合は呼び出し側で同期を取る。
+- `Decoder` と `Encoder` はどちらも `Send`（`unsafe impl Send`）。スレッド境界を越えて移動できるが、`&mut self` による排他アクセスが必要。`Sync` は実装されていない（共有参照での並行アクセスは不可）。
 
 ## 関連ファイル
 

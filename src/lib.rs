@@ -286,8 +286,13 @@ impl Decoder {
 }
 
 // 安全性: aom_codec_ctx はスレッド間で移動しても安全である。
-// libaom の内部状態はスレッドローカルな資源に依存せず、
-// コンテキストへの排他的アクセスがあれば（&mut self で保証される）問題ない。
+// !Send の原因は ctx 内の raw pointer 群（priv_, iface 等）だが、
+// これらが指すメモリはヒープ確保または静的データでありスレッドアフィニティを持たない。
+// libaom の内部スレッド（CONFIG_MULTITHREAD=1 時のワーカースレッド）は
+// プロセス全体で有効な同期プリミティブで通信しており、移動後も正しく動作する。
+// &mut self による排他アクセスが libaom の要求する排他性と一致する。
+// Sync は意図的に実装しない: libaom の API はコンテキストへの排他アクセスを要求し、
+// &Decoder の共有は内部状態のデータレースを引き起こす。
 unsafe impl Send for Decoder {}
 
 impl Drop for Decoder {
@@ -2344,9 +2349,8 @@ impl Encoder {
     }
 }
 
-// 安全性: aom_codec_ctx はスレッド間で移動しても安全である。
-// libaom の内部状態はスレッドローカルな資源に依存せず、
-// コンテキストへの排他的アクセスがあれば（&mut self で保証される）問題ない。
+// 安全性: Decoder と同じ根拠で Send が安全。
+// Sync は意図的に実装しない（Decoder と同じ理由）。
 unsafe impl Send for Encoder {}
 
 impl Drop for Encoder {
