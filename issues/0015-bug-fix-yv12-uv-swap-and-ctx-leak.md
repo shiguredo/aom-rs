@@ -1,6 +1,8 @@
 # YV12 フォーマットで U/V プレーンが入れ替わる + aom_img_alloc 失敗時の ctx リーク
 
 Created: 2026-07-21
+Priority: High
+Polished: 2026-07-21
 Model: Qwen Code
 
 ## 概要

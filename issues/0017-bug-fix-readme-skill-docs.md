@@ -1,6 +1,8 @@
 # README / SKILL.md のコード例とバージョン情報を修正する
 
 Created: 2026-07-21
+Priority: Medium
+Polished: 2026-07-21
 Model: Qwen Code
 
 ## 概要
@@ -21,7 +23,7 @@ while let Some(frame) = encoder.next_frame() {
 }
 ```
 
-`EncodedFrame::data()` のシグネチャは `pub fn data(&self) -> Result<&[u8], Error>`（`src/lib.rs:2339`）。`Result<&[u8], Error>` に `len()` メソッドはないため、`data.len()` はコンパイルエラーになる。SKILL.md では `frame.data()?` と正しく記載。
+`EncodedFrame::data()` のシグネチャは `pub fn data(&self) -> Result<&[u8], Error>`（`src/lib.rs:2337`）。`Result<&[u8], Error>` に `len()` メソッドはないため、`data.len()` はコンパイルエラーになる。SKILL.md では `frame.data()?` と正しく記載。
 
 ### README デコードコード例の Result 未処理
 
@@ -33,7 +35,7 @@ let u = frame.u_plane();
 let v = frame.v_plane();
 ```
 
-`y_plane()` 等は `Result<&[u8], Error>` を返す（`src/lib.rs:430,435,440`）。`?` なしで代入しており、ユーザーが `&[u8]` を直接返すと誤認する。SKILL.md では `frame.y_plane()?` と正しい。
+`y_plane()` 等は `Result<&[u8], Error>` を返す（`src/lib.rs:384,389,394`）。`?` なしで代入しており、ユーザーが `&[u8]` を直接返すと誤認する。SKILL.md では `frame.y_plane()?` と正しい。
 
 ### SKILL.md のバージョン情報不一致
 

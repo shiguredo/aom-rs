@@ -1,6 +1,8 @@
 # Makefile / CI / prek.toml のコマンド整合性を修正する
 
 Created: 2026-07-21
+Priority: Medium
+Polished: 2026-07-21
 Model: Qwen Code
 
 ## 概要
@@ -24,7 +26,7 @@ CI の clippy には `--all-targets` がないため、テストコードと exa
 
 ### 死にターゲット
 
-`Makefile:9-24` の `pbt`, `pbt-with-cover`, `fuzzing`, `fuzzing-list` は `pbt/` も `fuzz/` も存在しないため実行不能。
+`Makefile:11-27` の `pbt`, `pbt-with-cover`, `fuzzing`, `fuzzing-list` は `pbt/` も `fuzz/` も存在しないため実行不能。
 
 ### .PHONY の不整合
 

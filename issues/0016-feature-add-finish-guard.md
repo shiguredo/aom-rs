@@ -1,6 +1,8 @@
 # finish() 後の encode() / decode() / reconfigure() にガードを追加する
 
 Created: 2026-07-21
+Priority: High
+Polished: 2026-07-21
 Model: Qwen Code
 
 ## 概要
@@ -9,7 +11,7 @@ Model: Qwen Code
 
 ## 根拠
 
-`Encoder` 構造体（`src/lib.rs:1336-1344`）:
+`Encoder` 構造体（`src/lib.rs:1345-1354`）:
 
 ```rust
 pub struct Encoder {
@@ -29,7 +31,7 @@ pub struct Encoder {
 
 libaom の `aom_codec_encode` は NULL img による flush 後に非 NULL img を受け取った場合の動作を定義していない。
 
-`Decoder` も同様の問題を持つ（`src/lib.rs:148-151`）。
+`Decoder` も同様の問題を持つ（`src/lib.rs:149-152`）。
 
 ## 修正方針
 

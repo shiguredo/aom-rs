@@ -1,6 +1,8 @@
 # release.yml のコマンドインジェクションと GitHub Actions の SHA ピン留めを修正する
 
 Created: 2026-07-21
+Priority: High
+Polished: 2026-07-21
 Model: Qwen Code
 
 ## 概要
@@ -24,14 +26,14 @@ run: |
 
 `${{ steps.get_version.outputs.VERSION }}` は GitHub Actions の式評価結果がシェルスクリプトに文字列として直接埋め込まれる。`VERSION` の値は `GITHUB_REF` から生成されるタグ名そのものであり、サニタイズされていない。
 
-同様の問題は `release.yml:79`（`gh release upload`）、`release.yml:109`（Windows ジョブ）にも存在する。
+同様の問題は `release.yml:102`（`gh release upload`）、`release.yml:147`（Windows ジョブ）にも存在する。
 
 トリガーが `push: tags: "*"` であり、タグ作成にはリポジトリへの write 権限が必要。攻撃の前提条件は高いが、defense-in-depth の観点から修正すべき。
 
 ### SHA ピン留めされていないアクション
 
-- `ci.yml:28,44,78`: `shiguredo/github-actions/.github/actions/rust-cache@main`
-- `release.yml:126`: `shiguredo/github-actions/.github/actions/slack-notify@main`
+- `ci.yml:30,59,103`: `shiguredo/github-actions/.github/actions/rust-cache@main` と `slack-notify@main`
+- `release.yml:175`: `shiguredo/github-actions/.github/actions/slack-notify@main`
 
 `@main` 参照は `shiguredo/github-actions` リポジトリの改ざん時に CI パイプラインに悪意あるコードが注入される。`actions/checkout` 等は SHA ピン留め済みで基準が不統一。
 
@@ -41,7 +43,7 @@ run: |
 
 ### --clobber による上書き許可
 
-`release.yml:82,112` の `gh release upload --clobber` が既存アセットの上書きを許可している。
+`release.yml:105,150` の `gh release upload --clobber` が既存アセットの上書きを許可している。
 
 ## 修正方針
 

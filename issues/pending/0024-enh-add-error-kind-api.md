@@ -1,6 +1,8 @@
 # Error 型にプログラム的なエラー種別判定手段を追加する
 
 Created: 2026-07-21
+Priority: Low
+Polished: 2026-07-21
 Model: Qwen Code
 
 ## 概要

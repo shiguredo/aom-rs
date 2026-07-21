@@ -1,6 +1,8 @@
 # ImageData の全フォーマットとエラーパスのテストカバレッジを拡大する
 
 Created: 2026-07-21
+Priority: High
+Polished: 2026-07-21
 Model: Qwen Code
 
 ## 概要

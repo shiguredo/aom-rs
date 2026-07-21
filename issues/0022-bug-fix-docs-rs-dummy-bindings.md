@@ -1,6 +1,8 @@
 # DOCS_RS ダミーバインディングの完全性を検証・修正する
 
 Created: 2026-07-21
+Priority: Medium
+Polished: 2026-07-21
 Model: Qwen Code
 
 ## 概要
@@ -9,7 +11,7 @@ build.rs の DOCS_RS 分岐で生成されるダミーバインディングが�
 
 ## 根拠
 
-`build.rs:53-64` のダミーバインディングは 11 個（7 struct + 1 type + 3 const）のみ定義。lib.rs は約 120 個の `sys::` シンボルを参照している。
+`build.rs:56-66` のダミーバインディングは 11 個（7 struct + 1 type + 3 const）のみ定義。lib.rs は約 120 個の `sys::` シンボルを参照している。
 
 欠落しているシンボルの例:
 - extern 関数 16 個（`aom_codec_encode`, `aom_codec_decode`, `aom_codec_av1_dx` 等）
@@ -20,7 +22,7 @@ CHANGES.md に「DOCS_RS=1 ビルドでダミー bindings に aom_kf_mode 型と
 
 ### 検証状況
 
-ローカルで `DOCS_RS=1 cargo doc --no-deps` を実行したところパスしたが、source-build のキャッシュが使われた可能性が高い。`DOCS_RS` が `rerun-if-env-changed` に登録されていないため（`build.rs:27-29`）、Cargo が build.rs の再実行をスキップした可能性がある。
+ローカルで `DOCS_RS=1 cargo doc --no-deps` を実行したところパスしたが、source-build のキャッシュが使われた可能性が高い。`DOCS_RS` が `rerun-if-env-changed` に登録されていないため（`build.rs:26-27`）、Cargo が build.rs の再実行をスキップした可能性がある。
 
 ## 修正方針
 

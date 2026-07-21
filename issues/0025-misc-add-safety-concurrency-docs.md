@@ -1,6 +1,8 @@
 # unsafe impl Send の安全性コメントと並行性の文書化を充実する
 
 Created: 2026-07-21
+Priority: Low
+Polished: 2026-07-21
 Model: Qwen Code
 
 ## 概要
@@ -11,7 +13,7 @@ Model: Qwen Code
 
 ### unsafe impl Send の安全性コメント不十分
 
-`src/lib.rs:272-274`（Decoder）、`src/lib.rs:2313-2315`（Encoder）:
+`src/lib.rs:271-274`（Decoder）、`src/lib.rs:2312-2315`（Encoder）:
 
 ```rust
 // 安全性: aom_codec_ctx はスレッド間で移動しても安全である。

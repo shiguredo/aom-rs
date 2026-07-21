@@ -1,6 +1,8 @@
 # canary.py のプロンプト・コメント・git 状態検証を修正する
 
 Created: 2026-07-21
+Priority: Low
+Polished: 2026-07-21
 Model: Qwen Code
 
 ## 概要
@@ -11,7 +13,7 @@ canary.py に 3 つの問題がある。
 
 ### (Y/n) プロンプトと空入力の扱いが矛盾
 
-`canary.py:68-73`:
+`canary.py:68-74`:
 
 ```python
 confirmation: str = (
@@ -26,7 +28,7 @@ if confirmation != "y":
 
 ### 関数コメントのコピペミス
 
-`canary.py:89`（`git_commit_version`）と `canary.py:100`（`git_operations_after_build`）の両方が `# git コミット、タグ、プッシュを実行` という同一コメントを持つが、`git_commit_version` は commit のみ、`git_operations_after_build` は tag と push のみを行う。
+`canary.py:97`（`git_commit_version`）と `canary.py:111`（`git_operations_after_build`）の両方が `# git コミット、タグ、プッシュを実行` という同一コメントを持つが、`git_commit_version` は commit のみ、`git_operations_after_build` は tag と push のみを行う。
 
 ### git 状態の事前検証がない
 
