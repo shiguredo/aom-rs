@@ -1,6 +1,7 @@
 # release.yml のコマンドインジェクションと GitHub Actions の SHA ピン留めを修正する
 
 Created: 2026-07-21
+Completed: 2026-07-21
 Priority: High
 Polished: 2026-07-21
 Model: Qwen Code
@@ -55,3 +56,9 @@ run: |
 ## 後方互換
 
 CI/CD の修正のみ。クレートのコード・API に変更なし。
+
+## 解決方法
+
+- `${{ }}` による直接補間を `env:` 経由のシェル変数参照に変更した
+- `github-release` ジョブに `permissions: contents: write` を追加した
+- `gh release upload` コマンドも env 変数経由に変更した

@@ -1,6 +1,7 @@
 # Makefile / CI / prek.toml のコマンド整合性を修正する
 
 Created: 2026-07-21
+Completed: 2026-07-21
 Priority: Medium
 Polished: 2026-07-21
 Model: Qwen Code
@@ -48,3 +49,12 @@ Makefile の `fmt` は `cargo fmt --all`（フォーマットを適用）だが�
 ## 後方互換
 
 ビルド設定の修正のみ。クレートのコード・API に変更なし。
+
+## 解決方法
+
+- Makefile から死にターゲット（pbt, pbt-with-cover, fuzzing, fuzzing-list）を削除した
+- Makefile の test / clippy / cover に `--features source-build` を追加した
+- Makefile の clippy に `--all-targets` を追加した
+- Makefile に `fmt-check` ターゲットを追加した
+- `.PHONY` を実際のターゲット名と一致させた
+- CI の clippy に `--all-targets` を追加した

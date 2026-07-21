@@ -1,6 +1,7 @@
 # README / SKILL.md のコード例とバージョン情報を修正する
 
 Created: 2026-07-21
+Completed: 2026-07-21
 Priority: Medium
 Polished: 2026-07-21
 Model: Qwen Code
@@ -67,3 +68,10 @@ build.rs は `DOCS_RS` 環境変数で分岐しているが、README の環境�
 ## 後方互換
 
 ドキュメントの修正のみ。コードの変更なし。
+
+## 解決方法
+
+- README のエンコードコード例で `frame.data()` を `frame.data()?` に修正した
+- README のデコードコード例で `y_plane()` 等に `?` を追加した
+- SKILL.md のバージョン情報を 2026.2.0-canary.2 / v3.14.1 に更新した
+- SKILL.md の Encoder Send 記載を正しい内容に修正した

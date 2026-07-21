@@ -1,6 +1,7 @@
 # unsafe impl Send の安全性コメントと並行性の文書化を充実する
 
 Created: 2026-07-21
+Completed: 2026-07-21
 Priority: Low
 Polished: 2026-07-21
 Model: Qwen Code
@@ -49,3 +50,8 @@ libaom の `aom_encoder.h` には「AV1E_SET_DENOISE_NOISE_LEVEL が非ゼロの
 ## 後方互換
 
 コメント・ドキュメントの修正のみ。コードの動作に変更なし。
+
+## 解決方法
+
+- `unsafe impl Send for Decoder` の安全性コメントを構造化した（!Send の原因、移動が安全な根拠、CONFIG_MULTITHREAD の前提、Sync 非実装の根拠）
+- `unsafe impl Send for Encoder` のコメントを Decoder 参照に簡略化した

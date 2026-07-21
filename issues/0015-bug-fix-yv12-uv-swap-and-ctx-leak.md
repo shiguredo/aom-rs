@@ -1,6 +1,7 @@
 # YV12 フォーマットで U/V プレーンが入れ替わる + aom_img_alloc 失敗時の ctx リーク
 
 Created: 2026-07-21
+Completed: 2026-07-21
 Priority: High
 Polished: 2026-07-21
 Model: Qwen Code
@@ -101,3 +102,8 @@ if img_ptr.is_null() {
 バグ 1 は YV12 のエンコード結果が修正される（色成分が正しくなる）。YV12 を使用している既存ユーザーの出力は変化するが、それはバグ修正であり後方互換の問題ではない。
 
 バグ 2 は内部実装の修正のみ。公開 API の変更なし。
+
+## 解決方法
+
+- YV12 の match arm を I420 等から分離し、`planes[1]` に V データ、`planes[2]` に U データをコピーするよう修正した
+- `aom_img_alloc` 失敗時に `aom_codec_destroy` を呼んでから `Err` を返すよう修正した

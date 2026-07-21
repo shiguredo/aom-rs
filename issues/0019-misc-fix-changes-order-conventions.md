@@ -1,6 +1,7 @@
 # CHANGES.md の種別順序と規約違反を修正する
 
 Created: 2026-07-21
+Completed: 2026-07-21
 Priority: Medium
 Polished: 2026-07-21
 Model: Qwen Code
@@ -56,3 +57,11 @@ AGENTS.md「コメントは全て日本語」に違反。
 ## 後方互換
 
 ドキュメント・コメント・ログメッセージの修正のみ。コードの動作に変更なし。
+
+## 解決方法
+
+- CHANGES.md の develop / misc セクションを UPDATE → ADD → CHANGE → FIX の順に並び替えた
+- build.rs:119 の日本語ログを英語に変更した
+- build.rs:52 の英語コメントを日本語に変更した
+- tests/test_roundtrip.rs の日本語 panic/assert メッセージを英語に変更した
+- src/lib.rs の `// NOTE:` を `// 注意:` に変更した

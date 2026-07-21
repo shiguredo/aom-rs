@@ -1,6 +1,7 @@
 # finish() 後の encode() / decode() / reconfigure() にガードを追加する
 
 Created: 2026-07-21
+Completed: 2026-07-21
 Priority: High
 Polished: 2026-07-21
 Model: Qwen Code
@@ -51,3 +52,9 @@ libaom の `aom_codec_encode` は NULL img による flush 後に非 NULL img �
 ## 後方互換
 
 `finish()` 後の呼び出しがエラーになるため、既存のコードが `finish()` 後に `encode()` を呼んでいる場合は動作が変わる。ただし、それは未定義動作を引き起こすコードであり、エラーで止める方が正しい。
+
+## 解決方法
+
+- `Encoder` / `Decoder` に `finished: bool` フィールドを追加した
+- `finish()` 呼び出し時に `finished = true` を設定し、`encode()` / `decode()` / `reconfigure()` / 2 回目の `finish()` でエラーを返すようガードした
+- Encoder は `check_iter_drained` ヘルパー内で、Decoder は各メソッド冒頭でチェックする

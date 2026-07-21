@@ -1,6 +1,7 @@
 # canary.py のプロンプト・コメント・git 状態検証を修正する
 
 Created: 2026-07-21
+Completed: 2026-07-21
 Priority: Low
 Polished: 2026-07-21
 Model: Qwen Code
@@ -47,3 +48,9 @@ if confirmation != "y":
 ## 後方互換
 
 ユーティリティスクリプトの修正のみ。クレートのコード・API に変更なし。
+
+## 解決方法
+
+- `(Y/n)` プロンプトの空入力を Yes として扱うよう `confirmation not in ("y", "")` に修正した
+- `git_commit_version` のコメントを「git コミットを実行」に修正した
+- `git_operations_after_build` のコメントを「git タグ付け、プッシュを実行」に修正した
