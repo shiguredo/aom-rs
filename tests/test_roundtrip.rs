@@ -843,7 +843,7 @@ fn test_supported_codecs() {
             assert!(profiles.contains(&shiguredo_aom::Av1EncodingProfile::Profile0));
         }
         shiguredo_aom::EncodingProfiles::Unsupported => {
-            panic!("エンコードプロファイルが Unsupported になっている");
+            panic!("encoding profiles should not be Unsupported");
         }
     }
 }
@@ -1226,7 +1226,7 @@ fn test_reconfigure_followed_by_forced_keyframe() {
     }
     assert!(
         keyframe_seen,
-        "force_keyframe = true で reconfigure 直後のフレームがキーフレームとして出力されなかった"
+        "force_keyframe = true did not produce a keyframe immediately after reconfigure"
     );
 
     drive_dummy(&mut encoder, &options_p, width, height, 4..6, &mut packets);

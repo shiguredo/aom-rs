@@ -12,6 +12,8 @@ jobs:
   github-release:
     name: "Create GitHub Release"
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     outputs:
       version: ${{ steps.get_version.outputs.VERSION }}
     steps:
@@ -25,16 +27,17 @@ jobs:
       - name: Create Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.get_version.outputs.VERSION }}
         run: |
-          if ${{ contains(steps.get_version.outputs.VERSION, 'canary') }}; then
-            gh release create ${{ steps.get_version.outputs.VERSION }} \
+          if [[ "$VERSION" == *canary* ]]; then
+            gh release create "$VERSION" \
               --prerelease \
-              --title "${{ steps.get_version.outputs.VERSION }}" \
-              --notes "Release ${{ steps.get_version.outputs.VERSION }}"
+              --title "$VERSION" \
+              --notes "Release $VERSION"
           else
-            gh release create ${{ steps.get_version.outputs.VERSION }} \
-              --title "${{ steps.get_version.outputs.VERSION }}" \
-              --notes "Release ${{ steps.get_version.outputs.VERSION }}"
+            gh release create "$VERSION" \
+              --title "$VERSION" \
+              --notes "Release $VERSION"
           fi
 
   build-prebuilt:
@@ -98,10 +101,12 @@ jobs:
       - name: Upload prebuilt archive
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.github-release.outputs.version }}
+          TARGET: ${{ matrix.target }}
         run: |
-          gh release upload ${{ needs.github-release.outputs.version }} \
-            libaom-${{ matrix.target }}.tar.gz \
-            libaom-${{ matrix.target }}.tar.gz.sha256 \
+          gh release upload "$VERSION" \
+            "libaom-${TARGET}.tar.gz" \
+            "libaom-${TARGET}.tar.gz.sha256" \
             --clobber
 
   build-prebuilt-windows:
@@ -143,8 +148,9 @@ jobs:
       - name: Upload prebuilt archive
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.github-release.outputs.version }}
         run: |
-          gh release upload ${{ needs.github-release.outputs.version }} `
+          gh release upload "$env:VERSION" `
             libaom-windows_x86_64.tar.gz `
             libaom-windows_x86_64.tar.gz.sha256 `
             --clobber

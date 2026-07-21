@@ -69,7 +69,7 @@ def update_version(file_path: str, dry_run: bool) -> Optional[str]:
         input("Do you want to update the version? (Y/n): ").strip().lower()
     )
 
-    if confirmation != "y":
+    if confirmation not in ("y", ""):
         print("Version update canceled.")
         return None
 
@@ -94,7 +94,7 @@ def run_cargo_update(dry_run: bool) -> None:
         print("cargo update shiguredo_aom executed")
 
 
-# git コミット、タグ、プッシュを実行
+# git コミットを実行
 def git_commit_version(new_version: str, dry_run: bool) -> None:
     if dry_run:
         print("Dry-run: Would run 'git add Cargo.toml Cargo.lock'")
@@ -108,7 +108,7 @@ def git_commit_version(new_version: str, dry_run: bool) -> None:
         print(f"Version bumped and committed: {new_version}")
 
 
-# git コミット、タグ、プッシュを実行
+# git タグ付け、プッシュを実行
 def git_operations_after_build(new_version: str, dry_run: bool) -> None:
     if dry_run:
         print(f"Dry-run: Would run 'git tag {new_version}'")

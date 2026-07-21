@@ -149,6 +149,7 @@ impl Default for DecoderConfig {
 pub struct Decoder {
     ctx: sys::aom_codec_ctx,
     iter: sys::aom_codec_iter_t,
+    finished: bool,
 }
 
 impl Decoder {
@@ -203,6 +204,7 @@ impl Decoder {
             Ok(Self {
                 ctx,
                 iter: std::ptr::null(),
+                finished: false,
             })
         }
     }
@@ -211,6 +213,13 @@ impl Decoder {
     ///
     /// デコード結果は [`Decoder::next_frame()`] で取得できる
     pub fn decode(&mut self, data: &[u8]) -> Result<(), Error> {
+        if self.finished {
+            return Err(Error::with_reason(
+                sys::aom_codec_err_t_AOM_CODEC_ERROR,
+                "shiguredo_aom::Decoder::decode",
+                "decoder already finished",
+            ));
+        }
         if !self.iter.is_null() {
             return Err(Error::with_reason(
                 sys::aom_codec_err_t_AOM_CODEC_ERROR,
@@ -235,6 +244,13 @@ impl Decoder {
     ///
     /// 残りのデコード結果は [`Decoder::next_frame()`] で取得できる
     pub fn finish(&mut self) -> Result<(), Error> {
+        if self.finished {
+            return Err(Error::with_reason(
+                sys::aom_codec_err_t_AOM_CODEC_ERROR,
+                "shiguredo_aom::Decoder::finish",
+                "decoder already finished",
+            ));
+        }
         if !self.iter.is_null() {
             return Err(Error::with_reason(
                 sys::aom_codec_err_t_AOM_CODEC_ERROR,
@@ -247,6 +263,7 @@ impl Decoder {
             sys::aom_codec_decode(&mut self.ctx, std::ptr::null_mut(), 0, std::ptr::null_mut())
         };
         Error::check(code, "aom_codec_decode", Some(&self.ctx))?;
+        self.finished = true;
         Ok(())
     }
 
@@ -1351,6 +1368,7 @@ pub struct Encoder {
     frame_count: usize,
     image_format: ImageFormat,
     plane_sizes: PlaneSizes,
+    finished: bool,
 }
 
 // AOM_KF_FIXED は libaom 上で AOM_KF_DISABLED の deprecated alias (両者とも整数値 0)
@@ -1596,6 +1614,9 @@ impl Encoder {
                 1, // align に 1 を指定することで width == y_stride となることが保証される
             );
             if img_ptr.is_null() {
+                // aom_codec_enc_init_ver は成功しているため ctx は初期化済み。
+                // Self が構築される前なので Drop による解放が機能せず、手動で解放する。
+                sys::aom_codec_destroy(&mut ctx.assume_init());
                 return Err(Error::with_reason(
                     sys::aom_codec_err_t_AOM_CODEC_MEM_ERROR,
                     "aom_img_alloc",
@@ -1656,8 +1677,9 @@ impl Encoder {
                 frame_count: 0,
                 image_format: config.image_format,
                 plane_sizes,
+                finished: false,
             };
-            // NOTE: これ以降の操作に失敗しても ctx は Drop によって確実に解放される
+            // 注意: これ以降の操作に失敗しても ctx は Drop によって確実に解放される
 
             // --- エンコーダー制御パラメータの設定 ---
             this.apply_controls(config)?;
@@ -2216,7 +2238,6 @@ impl Encoder {
             // 画像データをバッファにコピー
             match image {
                 ImageData::I420 { y, u, v }
-                | ImageData::Yv12 { y, u, v }
                 | ImageData::I422 { y, u, v }
                 | ImageData::I444 { y, u, v }
                 | ImageData::I42016 { y, u, v }
@@ -2225,6 +2246,12 @@ impl Encoder {
                     std::slice::from_raw_parts_mut(self.img.planes[0], y.len()).copy_from_slice(y);
                     std::slice::from_raw_parts_mut(self.img.planes[1], u.len()).copy_from_slice(u);
                     std::slice::from_raw_parts_mut(self.img.planes[2], v.len()).copy_from_slice(v);
+                }
+                // YV12 は libaom 上で planes[1]=V, planes[2]=U の順
+                ImageData::Yv12 { y, u, v } => {
+                    std::slice::from_raw_parts_mut(self.img.planes[0], y.len()).copy_from_slice(y);
+                    std::slice::from_raw_parts_mut(self.img.planes[1], v.len()).copy_from_slice(v);
+                    std::slice::from_raw_parts_mut(self.img.planes[2], u.len()).copy_from_slice(u);
                 }
                 ImageData::Nv12 { y, uv } => {
                     std::slice::from_raw_parts_mut(self.img.planes[0], y.len()).copy_from_slice(y);
@@ -2266,6 +2293,7 @@ impl Encoder {
             )
         };
         Error::check(code, "aom_codec_encode", Some(&self.ctx))?;
+        self.finished = true;
         Ok(())
     }
 
@@ -2274,6 +2302,13 @@ impl Encoder {
     /// `encode()` / `finish()` / `reconfigure()` は `next_frame()` の取り出し中
     /// (`self.iter` が非 NULL) には呼べない。共通のガード処理として抽出している。
     fn check_iter_drained(&self, function: &'static str) -> Result<(), Error> {
+        if self.finished {
+            return Err(Error::with_reason(
+                sys::aom_codec_err_t_AOM_CODEC_ERROR,
+                function,
+                "encoder already finished",
+            ));
+        }
         if !self.iter.is_null() {
             return Err(Error::with_reason(
                 sys::aom_codec_err_t_AOM_CODEC_ERROR,

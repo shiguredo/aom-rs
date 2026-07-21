@@ -25,6 +25,7 @@ fn main() {
     println!("cargo::rerun-if-changed=build.rs");
     println!("cargo::rerun-if-env-changed=CARGO_FEATURE_SOURCE_BUILD");
     println!("cargo::rerun-if-env-changed=LIBAOM_TARGET");
+    println!("cargo::rerun-if-env-changed=DOCS_RS");
 
     // 各種変数やビルドディレクトリのセットアップ
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("infallible"));
@@ -49,7 +50,7 @@ fn main() {
         // Docs.rs 向けのビルドでは git clone ができないので build.rs の処理はスキップして、
         // 代わりに、ドキュメント生成時に最低限必要な定義だけをダミーで出力している。
         //
-        // See also: https://docs.rs/about/builds
+        // 参照: https://docs.rs/about/builds
         fs::write(
             output_bindings_path,
             concat!(
@@ -116,7 +117,7 @@ fn download_prebuilt(out_dir: &Path) -> PathBuf {
     fs::create_dir_all(&prebuilt_dir).expect("failed to create prebuilt directory");
 
     // curl でアーカイブをダウンロード
-    eprintln!("prebuilt ライブラリをダウンロード中: {}", archive_url);
+    eprintln!("downloading prebuilt library: {}", archive_url);
     let status = Command::new("curl")
         .args(["-fsSL", "-o"])
         .arg(&archive_path)
