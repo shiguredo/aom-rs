@@ -17,11 +17,18 @@ include = ["/LICENSE", "/README.md", "/build.rs", "/src/**/*"]
 url = "https://aomedia.googlesource.com/aom"
 version = "v3.14.1"
 
+[workspace]
+resolver = "2"
+members = [".", "pbt"]
+
 [dependencies]
 
 [build-dependencies]
+# libaom ヘッダから Rust FFI バインディングを生成する
 bindgen = "0.72"
+# libaom を CMake でビルドする
 shiguredo_cmake = "4.3"
+# package.metadata.external-dependencies を読む
 shiguredo_toml = "2026.2"
 
 [features]

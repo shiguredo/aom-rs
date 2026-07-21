@@ -207,7 +207,6 @@ pub enum RateControlMode {
     Vbr, Cbr, Cq, Q,
 }
 
-#[non_exhaustive]
 pub enum KeyframeMode {
     Disabled, // 自動配置を停止 (force_keyframe で挿入)。シーケンス先頭は常に KEY
     Fixed,    // [deprecated] AOM_KF_FIXED は AOM_KF_DISABLED の deprecated alias
@@ -228,7 +227,7 @@ pub enum ContentType    { Default, Screen, Film }
 
 `EncoderConfig` のフィールドは libaom の `aom_codec_enc_cfg_t` と `aom_codec_control` 制御パラメータに対応する。`Option` のフィールドは `None` で libaom デフォルトを採用する。
 
-`EncoderConfig` には `#[non_exhaustive]` が付与されており、構造体リテラルでの全フィールド指定は不可。`EncoderConfig::new()` で生成してから個別フィールドを上書きする運用。
+新規フィールド追加は破壊的変更として扱う。`EncoderConfig::new()` で生成してから個別フィールドを上書きする運用。
 
 ```rust
 let mut config = EncoderConfig::new(g_w, g_h, image_format);

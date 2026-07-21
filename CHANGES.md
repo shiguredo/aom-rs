@@ -29,9 +29,9 @@
   - @voluntas
 - [ADD] `EncoderConfig` に `mv_cost_upd_freq` フィールドを追加する
   - @voluntas
-- [CHANGE] `EncoderConfig` に `#[non_exhaustive]` を付与する
+- [ADD] `pbt/` に proptest による Property-Based Testing を追加する
   - @voluntas
-- [CHANGE] `KeyframeMode` に `#[non_exhaustive]` を付与する
+- [ADD] `fuzz/` に cargo-fuzz によるデコーダー fuzz ターゲットを追加する
   - @voluntas
 - [CHANGE] `KeyframeMode` に `Disabled` variant を追加する
   - @voluntas
@@ -46,7 +46,13 @@
   - @voluntas
 - [UPDATE] `KeyframeMode` から libaom の `aom_kf_mode` 定数へのマッピングを `map_kf_mode` private fn に切り出す
   - @voluntas
-- [UPDATE] `README.md` の `EncoderConfig` / `KeyframeMode` セクションに realtime 配信向けの追加フィールドと `#[non_exhaustive]` 注記を反映する
+- [UPDATE] lint 抑制を `#[allow]` から `#[expect]` に統一する
+  - @voluntas
+- [UPDATE] Copy 可能な `PlaneSizes` に `Copy` を derive する
+  - @voluntas
+- [UPDATE] `prek.toml` を shiguredo-rust 規約に合わせて更新する (`cargo test` を pre-push のみ、tombi 追加)
+  - @voluntas
+- [UPDATE] 統合テストを `tests/roundtrip.rs` と `tests/helpers/` に再配置する
   - @voluntas
 - [ADD] `examples/midstream_reconfigure.rs` を追加し、30fps エンコード途中でビットレートを切り替える典型パターンを示す
   - @voluntas

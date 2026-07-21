@@ -574,6 +574,7 @@ impl ImageData<'_> {
 }
 
 /// 各プレーンの期待サイズ
+#[derive(Debug, Clone, Copy)]
 enum PlaneSizes {
     /// 3 プレーン (I420, YV12, I422, I444, I42016, I42216, I44416)
     ThreePlanes {
@@ -617,7 +618,6 @@ pub enum RateControlMode {
 
 /// キーフレーム配置モード (kf_mode)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
 pub enum KeyframeMode {
     /// エンコーダー側のキーフレーム自動配置を停止する
     ///
@@ -860,7 +860,6 @@ fn is_profile_supported(profile_id: u32) -> bool {
 ///
 /// `Option` のフィールドは `None` の場合、libaom のデフォルト値がそのまま使われる。
 #[derive(Debug, Clone)]
-#[non_exhaustive]
 pub struct EncoderConfig {
     // --- 入力画像設定 (libaom 外) ---
     /// 入力画像フォーマット
@@ -1378,8 +1377,7 @@ pub struct Encoder {
 
 // AOM_KF_FIXED は libaom 上で AOM_KF_DISABLED の deprecated alias (両者とも整数値 0)
 // であるため、Disabled と Fixed の arm が同一値にマップされることは仕様。
-// 永続的に clippy::match_same_arms を抑止する。
-#[allow(deprecated, clippy::match_same_arms)]
+#[expect(deprecated)]
 fn map_kf_mode(mode: KeyframeMode) -> sys::aom_kf_mode {
     match mode {
         KeyframeMode::Disabled => sys::aom_kf_mode_AOM_KF_DISABLED,

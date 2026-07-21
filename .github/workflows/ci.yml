@@ -32,7 +32,7 @@ jobs:
           os: ubuntu-24.04
           toolchain: stable
       - run: cargo fmt --all --check
-      - run: cargo clippy --all-targets --features source-build -- -D warnings
+      - run: cargo clippy --workspace --all-targets --features source-build -- -D warnings
 
   test:
     name: ${{ matrix.os }}
@@ -60,7 +60,7 @@ jobs:
         with:
           os: ${{ matrix.os }}
           toolchain: stable
-      - run: cargo test --features source-build
+      - run: cargo test --workspace --features source-build
 
   test-windows:
     name: windows-2025
@@ -74,7 +74,7 @@ jobs:
         run: |
           choco install nasm -y
           echo "C:\Program Files\NASM" >> $env:GITHUB_PATH
-      - run: cargo test --features source-build
+      - run: cargo test --workspace --features source-build
 
   # docs.rs 向けビルド確認
   docs-rs:

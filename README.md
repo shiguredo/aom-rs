@@ -245,7 +245,7 @@ while let Some(frame) = decoder.next_frame() {
 
 ### `EncoderConfig`
 
-フィールド名は libaom の `aom_codec_enc_cfg_t` および `aom_codec_control` の制御パラメータに準拠しています。`#[non_exhaustive]` が付与されているため、構造体は `EncoderConfig::new()` 経由で生成してください。
+フィールド名は libaom の `aom_codec_enc_cfg_t` および `aom_codec_control` の制御パラメータに準拠しています。新規フィールド追加は破壊的変更として扱います。構造体は `EncoderConfig::new()` 経由で生成してから個別フィールドを上書きしてください。
 
 #### 基本設定
 
@@ -473,7 +473,7 @@ while let Some(frame) = decoder.next_frame() {
 
 ### `KeyframeMode`
 
-`#[non_exhaustive]` が付与されているため、将来的なバリアント追加に備えてください。
+新規バリアント追加は破壊的変更として扱います。
 
 | バリアント | 説明 |
 |---|---|
