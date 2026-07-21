@@ -1,11 +1,9 @@
 # reconfigure の PBT テストを追加する
 
 Created: 2026-05-10
+Completed: 2026-07-21
 Model: DeepSeek v4-pro
 
-## Pending 理由
-
-本 issue は AGENTS.md (CLAUDE.md) に存在した「PBT(Property-Based Testing) や Fuzzing で必ずテストを行うこと」「unittest は pbt で実現できないものだけを書く」というルールを根拠に作成された。しかしその後 AGENTS.md からこれらのルールおよび `## テストについて` / `## Rust` 節が削除されている (2026-05-10)。前提ルールが失われたため、本 issue の「PBT を新規導入する」という結論は再検討が必要であり、いったん `pending` に置く。再開時は (a) PBT を導入するか (b) 既存の単体テスト・回帰テストで十分とするかを判断したうえで設計を更新する。
 
 ## 概要
 
@@ -56,3 +54,12 @@ proptest! {
 `tests/test_roundtrip.rs` に 0009 で追加された単体テスト 8 本 (midstream / multi_switch / VBR / iter active / state unchanged / forced keyframe / PSNR) が reconfigure の主要なラウンドトリップ性質を網羅しており、現時点では PBT を追加で導入する強い動機はない。
 
 教訓: 規約に依拠した issue は規約変更で前提が消える。規約の根拠そのものを再確認してから起票する。
+
+## 解決方法
+
+`pbt/` クレートを追加し、proptest による reconfigure の PBT を実装した。
+
+- `reconfigure_preserves_frame_count`: 任意の妥当なビットレートで midstream reconfigure しても出力フレーム数が入力と一致すること
+- `reconfigure_same_bitrate_is_safe`: 同一ビットレートでの連続 reconfigure 後もエンコードが完走すること
+
+あわせて `fuzz/` にデコーダー向け cargo-fuzz ターゲットを追加し、shiguredo-rust が求める PBT / Fuzzing 構成を満たした。
