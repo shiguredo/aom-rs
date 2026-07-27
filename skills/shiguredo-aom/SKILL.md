@@ -13,7 +13,7 @@ description: 時雨堂の libaom (AV1) Rust バインディング shiguredo_aom 
 - バージョン: 2026.2.0-canary.2
 - libaom バージョン: v3.14.1
 - Rust Edition: 2024
-- 最小 Rust バージョン: 1.88
+- 最小 Rust バージョン: 1.93
 - ライセンス: Apache-2.0
 - リポジトリ: <https://github.com/shiguredo/aom-rs>
 

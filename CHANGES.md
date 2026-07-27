@@ -33,6 +33,8 @@
   - @voluntas
 - [ADD] `fuzz/` に cargo-fuzz によるデコーダー fuzz ターゲットを追加する
   - @voluntas
+- [CHANGE] MSRV (`rust-version`) を 1.88 から 1.93 に引き上げる
+  - @voluntas
 - [CHANGE] `KeyframeMode` に `Disabled` variant を追加する
   - @voluntas
 - [FIX] `KeyframeMode::Fixed` の rustdoc を libaom 実態 (`AOM_KF_DISABLED` の deprecated エイリアス) に合わせて修正し、`#[deprecated]` 属性を付与する

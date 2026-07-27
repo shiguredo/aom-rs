@@ -2,7 +2,7 @@
 name = "shiguredo_aom"
 version = "2026.2.0-canary.2"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.93"
 description = "Rust bindings for AOM (Alliance for Open Media) codec library"
 readme = "README.md"
 homepage = "https://github.com/shiguredo/aom-rs"
