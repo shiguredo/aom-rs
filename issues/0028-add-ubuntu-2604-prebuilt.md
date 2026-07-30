@@ -1,7 +1,7 @@
 # ubuntu-26.04 / ubuntu-26.04-arm の prebuilt バイナリをサポートする
 
 - Created: 2026-07-31
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-07-31
 - Branch: feature/add-ubuntu-2604-prebuilt
 - Polished: 2026-07-31
 - Model: Qwen Code qwen3.8-max-preview
@@ -34,8 +34,6 @@ CI で ubuntu-26.04 / ubuntu-26.04-arm をテストしているにもかかわ�
 
 ## 解決方法
 
-- `build.rs` の `detect_linux_distro` 関数の match arm に `"26.04"` を追加する
-- `.github/workflows/release.yml` の `build-prebuilt.strategy.matrix.include` に以下を追加する:
-  - `{ target: ubuntu-26.04_x86_64, os: ubuntu-26.04, rust_target: x86_64-unknown-linux-gnu }`
-  - `{ target: ubuntu-26.04_arm64, os: ubuntu-26.04-arm, rust_target: aarch64-unknown-linux-gnu }`
-- `README.md` の動作要件リストに `Ubuntu 26.04 x86_64` と `Ubuntu 26.04 arm64` を追加する
+- `build.rs` の `detect_linux_distro` 関数の match arm に `"26.04"` を追加した
+- `.github/workflows/release.yml` の `build-prebuilt.strategy.matrix.include` に `ubuntu-26.04_x86_64`（os: ubuntu-26.04）と `ubuntu-26.04_arm64`（os: ubuntu-26.04-arm）を追加した
+- `README.md` の動作要件リストに `Ubuntu 26.04 x86_64` と `Ubuntu 26.04 arm64` を追加した
