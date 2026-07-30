@@ -13,7 +13,7 @@ Model: Qwen Code
 
 ### ImageData の 7/8 variant が未テスト
 
-`ImageData` は 8 variant（I420, Yv12, Nv12, I422, I444, I42016, I42216, I44416）を公開しているが、テストで使われているのは I420 のみ（`tests/test_roundtrip.rs` 全体）。YV12 の U/V 入れ替わりバグ（0015）が検出されていない原因でもある。
+`ImageData` は 8 variant（I420, Yv12, Nv12, I422, I444, I42016, I42216, I44416）を公開しているが、テストで使われているのは I420 のみ（`tests/roundtrip.rs` 全体）。YV12 の U/V 入れ替わりバグ（0015）が検出されていない原因でもある。
 
 ### デコーダーのエラーパスが未テスト
 

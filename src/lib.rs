@@ -194,7 +194,7 @@ impl Decoder {
                 ctx.as_mut_ptr(),
                 iface,
                 cfg_ptr,
-                0, // flags
+                0, // フラグなし
                 sys::AOM_DECODER_ABI_VERSION as i32,
             );
             // 初期化失敗時は ctx が未初期化なので参照してはいけない
@@ -233,7 +233,7 @@ impl Decoder {
                 &mut self.ctx,
                 data.as_ptr(),
                 data.len(),
-                std::ptr::null_mut(), // user_priv
+                std::ptr::null_mut(), // ユーザープライベートデータなし
             )
         };
         Error::check(code, "aom_codec_decode", Some(&self.ctx))?;
@@ -341,7 +341,7 @@ impl DecodedFrame<'_> {
     // libaom での高ビット深度フォーマットについてのメモ：
     // - libaom は AV1 の 10-bit プロファイル（Profile 0 の 10-bit など）をサポート
     // - 高ビット深度データは 16-bit リトルエンディアン形式で格納される
-    // - 実際の値範囲は 10-bit (0-1023) だが、上位6ビットは未使用
+    // - 実際の値範囲は 10-bit (0-1023) だが、上位 6 ビットは未使用
     // - ストライドは 16-bit 単位（バイト数は width * 2）で計算される
     pub fn is_high_depth(&self) -> bool {
         matches!(
@@ -1592,7 +1592,7 @@ impl Encoder {
                 ctx.as_mut_ptr(),
                 iface,
                 &aom_config,
-                0, // flags
+                0, // フラグなし
                 sys::AOM_ENCODER_ABI_VERSION as i32,
             );
             Error::check(code, "aom_codec_enc_init_ver", None)?;
@@ -2290,9 +2290,9 @@ impl Encoder {
             sys::aom_codec_encode(
                 &mut self.ctx,
                 std::ptr::null(),
-                -1, // pts
-                0,  // duration
-                0,  // flags
+                -1, // フラッシュ信号の pts
+                0,  // 再生時間なし
+                0,  // フラグなし
             )
         };
         Error::check(code, "aom_codec_encode", Some(&self.ctx))?;
