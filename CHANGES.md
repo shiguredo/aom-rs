@@ -33,6 +33,8 @@
   - @voluntas
 - [ADD] `fuzz/` に cargo-fuzz によるデコーダー fuzz ターゲットを追加する
   - @voluntas
+- [ADD] ubuntu-26.04 / ubuntu-26.04-arm の prebuilt バイナリをサポートする
+  - @voluntas
 - [CHANGE] MSRV (`rust-version`) を 1.88 から 1.93 に引き上げる
   - @voluntas
 - [CHANGE] `KeyframeMode` に `Disabled` variant を追加する
