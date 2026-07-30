@@ -1,7 +1,7 @@
 # CI / release ワークフローの composite action を SHA ピン留めする
 
 - Created: 2026-07-31
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-07-31
 - Branch: feature/fix-ci-sha-pinning
 - Polished: 2026-07-31
 - Model: Qwen Code qwen3.8-max-preview
@@ -39,5 +39,6 @@ uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
 ## 解決方法
 
-- `gh api repos/shiguredo/github-actions/commits/main --jq .sha` で最新コミットハッシュを取得する
-- `.github/workflows/ci.yml` と `.github/workflows/release.yml` の `@main` を `@<SHA> # main` に置換する
+- `gh api repos/shiguredo/github-actions/commits/main --jq .sha` でコミットハッシュ `091812b41cd7c5f2b5818d4fde613f93bf0c93b1` を取得
+- `.github/workflows/ci.yml` の `rust-cache@main`（2 箇所）と `slack-notify@main`（1 箇所）を `@091812b41cd7c5f2b5818d4fde613f93bf0c93b1 # main` に置換
+- `.github/workflows/release.yml` の `slack-notify@main`（1 箇所）を同様に置換
