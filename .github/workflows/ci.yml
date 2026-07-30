@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - run: rustup update stable
       - run: sudo apt-get update && sudo apt-get install -y build-essential nasm
-      - uses: shiguredo/github-actions/.github/actions/rust-cache@main
+      - uses: shiguredo/github-actions/.github/actions/rust-cache@091812b41cd7c5f2b5818d4fde613f93bf0c93b1 # main
         with:
           os: ubuntu-24.04
           toolchain: stable
@@ -56,7 +56,7 @@ jobs:
       - name: Install build dependencies (Ubuntu)
         if: startsWith(matrix.os, 'ubuntu')
         run: sudo apt-get update && sudo apt-get install -y build-essential nasm
-      - uses: shiguredo/github-actions/.github/actions/rust-cache@main
+      - uses: shiguredo/github-actions/.github/actions/rust-cache@091812b41cd7c5f2b5818d4fde613f93bf0c93b1 # main
         with:
           os: ${{ matrix.os }}
           toolchain: stable
@@ -100,7 +100,7 @@ jobs:
       actions: read
     steps:
       - name: Slack Notification
-        uses: shiguredo/github-actions/.github/actions/slack-notify@main
+        uses: shiguredo/github-actions/.github/actions/slack-notify@091812b41cd7c5f2b5818d4fde613f93bf0c93b1 # main
         with:
           status: ${{ job.status }}
           slack_webhook: ${{ secrets.SLACK_WEBHOOK }}

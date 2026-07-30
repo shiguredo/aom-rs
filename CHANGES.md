@@ -66,6 +66,8 @@
   - @voluntas
 - [ADD] CI に ubuntu-26.04 / ubuntu-26.04-arm を追加する
   - @voluntas
+- [UPDATE] CI / release ワークフローの composite action 参照を SHA ピン留めにする
+  - @voluntas
 
 ## 2026.1.0
 
