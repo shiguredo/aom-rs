@@ -41,6 +41,8 @@
   - @voluntas
 - [FIX] `DOCS_RS=1` ビルドでダミー bindings に `aom_kf_mode` 型と関連定数が不足し `cargo doc --no-deps` が失敗する問題を修正する
   - @voluntas
+- [FIX] `Encoder::init` の unsafe コードに `DecodedFrame::plane` と同等の防御的検証（planes null チェック・stride 正値チェック・`checked_mul` + `isize::MAX` オーバーフローチェック）を追加する
+  - @voluntas
 
 ### misc
 

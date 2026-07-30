@@ -1627,48 +1627,172 @@ impl Encoder {
                 ));
             }
 
-            let img = img.assume_init();
+            let mut img = img.assume_init();
+
+            // aom_img_alloc 成功後の防御的検証
+            //
+            // DecodedFrame::plane と同等の null チェック・stride 正値チェックを行う。
+            // aom_img_alloc の成功は null でないことを強く示唆するが、
+            // unsafe コードの健全性は保証でなければならない。
+            let plane_count = match config.image_format {
+                ImageFormat::Nv12 => 2,
+                _ => 3,
+            };
+            for i in 0..plane_count {
+                if img.planes[i].is_null() {
+                    sys::aom_img_free(&mut img);
+                    sys::aom_codec_destroy(&mut ctx.assume_init());
+                    return Err(Error::with_reason(
+                        sys::aom_codec_err_t_AOM_CODEC_MEM_ERROR,
+                        "aom_img_alloc",
+                        "allocated image has null plane pointer",
+                    ));
+                }
+                if img.stride[i] <= 0 {
+                    sys::aom_img_free(&mut img);
+                    sys::aom_codec_destroy(&mut ctx.assume_init());
+                    return Err(Error::with_reason(
+                        sys::aom_codec_err_t_AOM_CODEC_ERROR,
+                        "aom_img_alloc",
+                        "allocated image has non-positive stride",
+                    ));
+                }
+            }
+
+            // プレーンサイズの計算（オーバーフロー検証付き）
+            //
+            // DecodedFrame::plane と同等の checked_mul + isize::MAX チェックを行う。
+            // release モードでオーバーフローするとラップし、encode() のサイズ検証を
+            // 偶然通過した際に from_raw_parts_mut でデータ破壊に至るため。
             let height = config.g_h as usize;
+            let checked_plane_size = |h: usize, stride: i32| -> Result<usize, Error> {
+                let stride = stride as usize;
+                let size = h.checked_mul(stride).ok_or_else(|| {
+                    Error::with_reason(
+                        sys::aom_codec_err_t_AOM_CODEC_MEM_ERROR,
+                        "shiguredo_aom::Encoder::init",
+                        "plane size overflow: height * stride exceeds usize",
+                    )
+                })?;
+                if size > isize::MAX as usize {
+                    return Err(Error::with_reason(
+                        sys::aom_codec_err_t_AOM_CODEC_MEM_ERROR,
+                        "shiguredo_aom::Encoder::init",
+                        "plane size exceeds isize::MAX",
+                    ));
+                }
+                Ok(size)
+            };
             let plane_sizes = match config.image_format {
                 ImageFormat::Nv12 => PlaneSizes::TwoPlanes {
-                    y_size: height * img.stride[0] as usize,
-                    uv_size: height.div_ceil(2) * img.stride[1] as usize,
+                    y_size: checked_plane_size(height, img.stride[0]).inspect_err(|_| {
+                        sys::aom_img_free(&mut img);
+                        sys::aom_codec_destroy(&mut ctx.assume_init());
+                    })?,
+                    uv_size: checked_plane_size(height.div_ceil(2), img.stride[1]).inspect_err(
+                        |_| {
+                            sys::aom_img_free(&mut img);
+                            sys::aom_codec_destroy(&mut ctx.assume_init());
+                        },
+                    )?,
                 },
                 // 4:2:0 系 (U/V は幅・高さともに半分)
                 ImageFormat::I420 | ImageFormat::Yv12 => PlaneSizes::ThreePlanes {
-                    y_size: height * img.stride[0] as usize,
-                    u_size: height.div_ceil(2) * img.stride[1] as usize,
-                    v_size: height.div_ceil(2) * img.stride[2] as usize,
+                    y_size: checked_plane_size(height, img.stride[0]).inspect_err(|_| {
+                        sys::aom_img_free(&mut img);
+                        sys::aom_codec_destroy(&mut ctx.assume_init());
+                    })?,
+                    u_size: checked_plane_size(height.div_ceil(2), img.stride[1]).inspect_err(
+                        |_| {
+                            sys::aom_img_free(&mut img);
+                            sys::aom_codec_destroy(&mut ctx.assume_init());
+                        },
+                    )?,
+                    v_size: checked_plane_size(height.div_ceil(2), img.stride[2]).inspect_err(
+                        |_| {
+                            sys::aom_img_free(&mut img);
+                            sys::aom_codec_destroy(&mut ctx.assume_init());
+                        },
+                    )?,
                 },
                 // 4:2:2 系 (U/V は幅が半分、高さは同じ)
                 ImageFormat::I422 => PlaneSizes::ThreePlanes {
-                    y_size: height * img.stride[0] as usize,
-                    u_size: height * img.stride[1] as usize,
-                    v_size: height * img.stride[2] as usize,
+                    y_size: checked_plane_size(height, img.stride[0]).inspect_err(|_| {
+                        sys::aom_img_free(&mut img);
+                        sys::aom_codec_destroy(&mut ctx.assume_init());
+                    })?,
+                    u_size: checked_plane_size(height, img.stride[1]).inspect_err(|_| {
+                        sys::aom_img_free(&mut img);
+                        sys::aom_codec_destroy(&mut ctx.assume_init());
+                    })?,
+                    v_size: checked_plane_size(height, img.stride[2]).inspect_err(|_| {
+                        sys::aom_img_free(&mut img);
+                        sys::aom_codec_destroy(&mut ctx.assume_init());
+                    })?,
                 },
                 // 4:4:4 系 (U/V は Y と同サイズ)
                 ImageFormat::I444 => PlaneSizes::ThreePlanes {
-                    y_size: height * img.stride[0] as usize,
-                    u_size: height * img.stride[1] as usize,
-                    v_size: height * img.stride[2] as usize,
+                    y_size: checked_plane_size(height, img.stride[0]).inspect_err(|_| {
+                        sys::aom_img_free(&mut img);
+                        sys::aom_codec_destroy(&mut ctx.assume_init());
+                    })?,
+                    u_size: checked_plane_size(height, img.stride[1]).inspect_err(|_| {
+                        sys::aom_img_free(&mut img);
+                        sys::aom_codec_destroy(&mut ctx.assume_init());
+                    })?,
+                    v_size: checked_plane_size(height, img.stride[2]).inspect_err(|_| {
+                        sys::aom_img_free(&mut img);
+                        sys::aom_codec_destroy(&mut ctx.assume_init());
+                    })?,
                 },
                 // 16-bit 4:2:0 系
                 ImageFormat::I42016 => PlaneSizes::ThreePlanes {
-                    y_size: height * img.stride[0] as usize,
-                    u_size: height.div_ceil(2) * img.stride[1] as usize,
-                    v_size: height.div_ceil(2) * img.stride[2] as usize,
+                    y_size: checked_plane_size(height, img.stride[0]).inspect_err(|_| {
+                        sys::aom_img_free(&mut img);
+                        sys::aom_codec_destroy(&mut ctx.assume_init());
+                    })?,
+                    u_size: checked_plane_size(height.div_ceil(2), img.stride[1]).inspect_err(
+                        |_| {
+                            sys::aom_img_free(&mut img);
+                            sys::aom_codec_destroy(&mut ctx.assume_init());
+                        },
+                    )?,
+                    v_size: checked_plane_size(height.div_ceil(2), img.stride[2]).inspect_err(
+                        |_| {
+                            sys::aom_img_free(&mut img);
+                            sys::aom_codec_destroy(&mut ctx.assume_init());
+                        },
+                    )?,
                 },
                 // 16-bit 4:2:2 系
                 ImageFormat::I42216 => PlaneSizes::ThreePlanes {
-                    y_size: height * img.stride[0] as usize,
-                    u_size: height * img.stride[1] as usize,
-                    v_size: height * img.stride[2] as usize,
+                    y_size: checked_plane_size(height, img.stride[0]).inspect_err(|_| {
+                        sys::aom_img_free(&mut img);
+                        sys::aom_codec_destroy(&mut ctx.assume_init());
+                    })?,
+                    u_size: checked_plane_size(height, img.stride[1]).inspect_err(|_| {
+                        sys::aom_img_free(&mut img);
+                        sys::aom_codec_destroy(&mut ctx.assume_init());
+                    })?,
+                    v_size: checked_plane_size(height, img.stride[2]).inspect_err(|_| {
+                        sys::aom_img_free(&mut img);
+                        sys::aom_codec_destroy(&mut ctx.assume_init());
+                    })?,
                 },
                 // 16-bit 4:4:4 系
                 ImageFormat::I44416 => PlaneSizes::ThreePlanes {
-                    y_size: height * img.stride[0] as usize,
-                    u_size: height * img.stride[1] as usize,
-                    v_size: height * img.stride[2] as usize,
+                    y_size: checked_plane_size(height, img.stride[0]).inspect_err(|_| {
+                        sys::aom_img_free(&mut img);
+                        sys::aom_codec_destroy(&mut ctx.assume_init());
+                    })?,
+                    u_size: checked_plane_size(height, img.stride[1]).inspect_err(|_| {
+                        sys::aom_img_free(&mut img);
+                        sys::aom_codec_destroy(&mut ctx.assume_init());
+                    })?,
+                    v_size: checked_plane_size(height, img.stride[2]).inspect_err(|_| {
+                        sys::aom_img_free(&mut img);
+                        sys::aom_codec_destroy(&mut ctx.assume_init());
+                    })?,
                 },
             };
 
