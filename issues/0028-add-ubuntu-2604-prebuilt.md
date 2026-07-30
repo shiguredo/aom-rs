@@ -3,7 +3,7 @@
 - Created: 2026-07-31
 - Completed: {YYYY-MM-DD}
 - Branch: feature/add-ubuntu-2604-prebuilt
-- Polished: {YYYY-MM-DD}
+- Polished: 2026-07-31
 - Model: Qwen Code qwen3.8-max-preview
 
 ## 目的
@@ -17,7 +17,7 @@ CI で ubuntu-26.04 / ubuntu-26.04-arm をテストしているにもかかわ�
 - `.github/workflows/release.yml` の `build-prebuilt` matrix に ubuntu-26.04 系がない
 - `README.md` の動作要件に ubuntu-26.04 が記載されていない
 
-つまり CI でサポートを謳っている OS で、デフォルトの `cargo build`（prebuilt パス）が panic する。
+つまり CI でテストしている OS にもかかわらず、エンドユーザーがデフォルトの `cargo build`（prebuilt パス）を実行すると panic する（CI 自体は `--features source-build` で動作するためこの panic に遭遇しない）。
 
 ## 設計方針
 

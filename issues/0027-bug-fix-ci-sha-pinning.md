@@ -3,7 +3,7 @@
 - Created: 2026-07-31
 - Completed: {YYYY-MM-DD}
 - Branch: feature/fix-ci-sha-pinning
-- Polished: {YYYY-MM-DD}
+- Polished: 2026-07-31
 - Model: Qwen Code qwen3.8-max-preview
 
 ## 目的

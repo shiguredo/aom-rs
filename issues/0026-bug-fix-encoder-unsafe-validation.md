@@ -3,7 +3,7 @@
 - Created: 2026-07-31
 - Completed: {YYYY-MM-DD}
 - Branch: feature/fix-encoder-unsafe-validation
-- Polished: {YYYY-MM-DD}
+- Polished: 2026-07-31
 - Model: Qwen Code qwen3.8-max-preview
 
 ## 目的
@@ -31,7 +31,7 @@ Encoder 側の unsafe コード（`plane_sizes` 計算と `encode()` 内の `fro
 - `Encoder::init` の `plane_sizes` 計算に `checked_mul` と `isize::MAX` チェックを追加する
 - `aom_img_alloc` 成功直後に planes ポインタの null チェックを追加する（`encode()` 側の毎回チェックではなく、初期化時の 1 回チェックで十分。`img` は Encoder のライフタイム中に再割り当てされないため）
 - stride の正値チェックも初期化時に追加する
-- 検証失敗時は `aom_codec_destroy` で ctx を解放してからエラーを返す（既存の `aom_img_alloc` 失敗パスと同じパターン）
+- 検証失敗時は `aom_img_free` + `aom_codec_destroy` でリソースを解放してからエラーを返す（`img` 割り当て成功後の検証であるため、既存の `aom_img_alloc` 失敗パスより 1 つ解放対象が多い）
 
 ## 完了条件
 
@@ -42,6 +42,8 @@ Encoder 側の unsafe コード（`plane_sizes` 計算と `encode()` 内の `fro
 
 ## 解決方法
 
-- `Encoder::init` 内の `plane_sizes` match 式の各 arm で `checked_mul` を使い、`None` の場合はエラーを返す
-- `aom_img_alloc` の null チェック直後に `img.planes[0]`, `img.planes[1]`, `img.planes[2]`（Nv12 は `[0]`, `[1]`）の null チェックと `img.stride[0..2]` の正値チェックを追加する
-- 検証失敗時は既存の `aom_img_alloc` 失敗パスと同様に `aom_codec_destroy` を呼んでから `Err` を返す
+- `Encoder::init` 内の `plane_sizes` match 式の各 arm で `checked_mul` を使い、`None` の場合はエラーを返す。`isize::MAX` 上限チェックも同様に行う
+- `aom_img_alloc` の null チェック直後（`img.assume_init()` の後）に、使用するプレーン数に応じた null チェックと stride 正値チェックを追加する:
+  - ThreePlanes 系（I420, Yv12, I422, I444, I42016, I42216, I44416）: `img.planes[0]`, `img.planes[1]`, `img.planes[2]` の null チェックと `img.stride[0]`, `img.stride[1]`, `img.stride[2]` の正値チェック
+  - TwoPlanes 系（Nv12）: `img.planes[0]`, `img.planes[1]` の null チェックと `img.stride[0]`, `img.stride[1]` の正値チェック
+- 検証失敗時は `aom_img_free` でイメージバッファを解放し、`aom_codec_destroy` で ctx を解放してから `Err` を返す（既存の `aom_img_alloc` 失敗パスは `img` 未割り当てのため `aom_codec_destroy` のみだが、本検証ポイントは `img` 割り当て成功後であるため両方の解放が必要）
