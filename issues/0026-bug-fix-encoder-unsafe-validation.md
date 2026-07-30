@@ -1,7 +1,7 @@
 # Encoder 側の unsafe コードに DecodedFrame と同等の防御的検証を追加する
 
 - Created: 2026-07-31
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-07-31
 - Branch: feature/fix-encoder-unsafe-validation
 - Polished: 2026-07-31
 - Model: Qwen Code qwen3.8-max-preview
@@ -47,3 +47,4 @@ Encoder 側の unsafe コード（`plane_sizes` 計算と `encode()` 内の `fro
   - ThreePlanes 系（I420, Yv12, I422, I444, I42016, I42216, I44416）: `img.planes[0]`, `img.planes[1]`, `img.planes[2]` の null チェックと `img.stride[0]`, `img.stride[1]`, `img.stride[2]` の正値チェック
   - TwoPlanes 系（Nv12）: `img.planes[0]`, `img.planes[1]` の null チェックと `img.stride[0]`, `img.stride[1]` の正値チェック
 - 検証失敗時は `aom_img_free` でイメージバッファを解放し、`aom_codec_destroy` で ctx を解放してから `Err` を返す（既存の `aom_img_alloc` 失敗パスは `img` 未割り当てのため `aom_codec_destroy` のみだが、本検証ポイントは `img` 割り当て成功後であるため両方の解放が必要）
+- 実装では `checked_plane_size` クロージャで `checked_mul` + `isize::MAX` を検証し、`inspect_err` でリソース解放を行う
