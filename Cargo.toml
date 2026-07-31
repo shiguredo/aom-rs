@@ -27,7 +27,7 @@ members = [".", "pbt"]
 # libaom ヘッダから Rust FFI バインディングを生成する
 bindgen = "0.72"
 # libaom を CMake でビルドする
-shiguredo_cmake = "4.3"
+shiguredo_cmake = "4.4"
 # package.metadata.external-dependencies を読む
 shiguredo_toml = "2026.2"
 

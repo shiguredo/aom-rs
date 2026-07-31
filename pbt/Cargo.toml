@@ -10,4 +10,4 @@ shiguredo_aom = { path = "..", features = ["source-build"] }
 
 [dev-dependencies]
 # Property-Based Testing
-proptest = "1.7"
+proptest = "1.11"

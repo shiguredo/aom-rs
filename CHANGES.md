@@ -48,6 +48,10 @@
 
 ### misc
 
+- [UPDATE] build-dependencies の `shiguredo_cmake` を 4.3 から 4.4 に更新する
+  - @voluntas
+- [UPDATE] `pbt/` の `proptest` を 1.7 から 1.11 に更新する
+  - @voluntas
 - [UPDATE] `Encoder::encode()` / `finish()` / `reconfigure()` の `next_frame()` ガードを `check_iter_drained` ヘルパーに集約する
   - @voluntas
 - [UPDATE] `KeyframeMode` から libaom の `aom_kf_mode` 定数へのマッピングを `map_kf_mode` private fn に切り出す
