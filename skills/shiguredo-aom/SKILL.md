@@ -29,7 +29,7 @@ cargo build
 
 GitHub Releases から prebuilt バイナリをダウンロードしてリンクする。対応プラットフォーム:
 
-- Ubuntu 24.04 / 22.04 (x86_64, arm64)
+- Ubuntu 26.04 / 24.04 / 22.04 (x86_64, arm64)
 - macOS 26 / 15 (arm64)
 - Windows 11 / Windows Server 2025 (x86_64)
 
