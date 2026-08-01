@@ -18,8 +18,7 @@ url = "https://aomedia.googlesource.com/aom"
 version = "v3.14.1"
 
 [workspace]
-resolver = "2"
-members = [".", "pbt"]
+members = ["pbt"]
 
 [dependencies]
 
