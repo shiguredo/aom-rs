@@ -1,6 +1,6 @@
 use shiguredo_aom::{
-    DecoderConfig, EncodeOptions, Encoder, EncoderConfig, ImageData, ImageFormat, KeyframeMode,
-    RateControlMode, Usage,
+    DecoderConfig, EncodeOptions, Encoder, EncoderConfig, EncodingPass, ImageData, ImageFormat,
+    KeyframeMode, RateControlMode, Usage,
 };
 
 mod helpers;
@@ -90,6 +90,21 @@ fn test_roundtrip_i44416_10bit() {
 fn test_roundtrip_i42016_12bit() {
     let config = highbitdepth_config(320, 240, ImageFormat::I42016, 12, 2);
     roundtrip_colorbar_16bit(config, 10, 50.0);
+}
+
+// ============================================================================
+// エンコーディングモードテスト
+// ============================================================================
+
+/// `g_pass` に `OnePass` を明示指定してもラウンドトリップできることを確認する
+///
+/// `None` (デフォルト) でも libaom のデフォルト (AOM_RC_ONE_PASS) が使われるため
+/// 同一の挙動になるが、明示指定のコードパスをテストで固定する。
+#[test]
+fn test_roundtrip_g_pass_one_pass() {
+    let mut config = realtime_config(320, 240, RateControlMode::Cbr);
+    config.g_pass = Some(EncodingPass::OnePass);
+    roundtrip_colorbar(config, 10, 25.0);
 }
 
 // ============================================================================

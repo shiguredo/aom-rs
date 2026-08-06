@@ -214,7 +214,7 @@ pub enum KeyframeMode {
 }
 
 pub enum EncodingPass {
-    OnePass, FirstPass, SecondPass, ThirdPass,
+    OnePass,     // シングルパスのみ対応
 }
 
 pub struct AomRational { pub num: i32, pub den: i32 }

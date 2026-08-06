@@ -39,6 +39,8 @@
   - @voluntas
 - [CHANGE] `KeyframeMode` に `Disabled` variant を追加する
   - @voluntas
+- [CHANGE] `EncodingPass` を OnePass のみに削減し、マルチパスエンコードを非対応とする
+  - @voluntas
 - [FIX] `KeyframeMode::Fixed` の rustdoc を libaom 実態 (`AOM_KF_DISABLED` の deprecated エイリアス) に合わせて修正し、`#[deprecated]` 属性を付与する
   - @voluntas
 - [FIX] `DOCS_RS=1` ビルドでダミー bindings に `aom_kf_mode` 型と関連定数が不足し `cargo doc --no-deps` が失敗する問題を修正する
