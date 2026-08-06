@@ -1,7 +1,7 @@
 # EncodingPass を OnePass のみに削減してマルチパスエンコードを非対応とする
 
 - Created: 2026-08-02
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-06
 - Branch: feature/change-multipass-encoding
 - Polished: 2026-08-06
 - Reporter: @voluntas
@@ -41,7 +41,10 @@ pending issue 0001 (`rc_twopass_stats_in` / `rc_firstpass_mb_stats_in` の追加
 
 ## 解決方法
 
-- `src/lib.rs` の `EncodingPass` enum から FirstPass / SecondPass / ThirdPass を削除し、OnePass のみにする (`Encoder::init` の g_pass マッピングは OnePass のみに簡素化し、enum と g_pass フィールドの rustdoc も OnePass のみの内容に更新する)
-- README の `EncodingPass` の説明と `g_pass` の説明を OnePass のみに更新し、シングルパスのみ対応と明記する
-- skills/shiguredo-aom/SKILL.md の `EncodingPass` / `g_pass` の記述を OnePass のみに更新し、シングルパスのみ対応と明記する
-- CHANGES.md の `## develop` に `[CHANGE]` エントリを追記する (例: `[CHANGE] EncodingPass を OnePass のみに削減し、マルチパスエンコードを非対応とする`)
+- src/lib.rs の `EncodingPass` enum から FirstPass / SecondPass / ThirdPass を削除し、OnePass のみにした。enum と `EncoderConfig::g_pass` の rustdoc も OnePass のみの内容に更新した (シングルパスのみ対応・拡張点として variant を残す旨・`None` と `Some(OnePass)` が同一挙動になる旨を明記)
+- `Encoder::init` の g_pass マッピングを OnePass のみに簡素化した (将来のマルチパス variant 追加に備える拡張点として、OnePass のみのマッピングをコメント付きで残す)
+- `Encoder::next_frame` のパケット種別フィルタリングは変更していない (設計方針どおり)
+- README の `EncodingPass` の説明と `g_pass` の説明を OnePass のみに更新し、シングルパスのみ対応と明記した (拡張点として残す理由も追記)
+- skills/shiguredo-aom/SKILL.md の `EncodingPass` の記述を OnePass のみに更新し、シングルパスのみ対応と明記した
+- CHANGES.md の `## develop` に `[CHANGE]` エントリを追記した
+- tests/roundtrip.rs に `g_pass: Some(EncodingPass::OnePass)` を明示指定する回帰テストを追加した (None デフォルトと同じ挙動になるが、明示指定のコードパスを固定する)

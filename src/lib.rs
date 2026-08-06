@@ -650,17 +650,16 @@ pub enum KeyframeMode {
     Auto,
 }
 
-/// マルチパスエンコーディングモード (g_pass)
+/// エンコーディングモード (g_pass)
+///
+/// シングルパスのみ対応している。マルチパスエンコード (FirstPass /
+/// SecondPass / ThirdPass) は対応していない。
+///
+/// 将来マルチパスを追加する際の拡張点として variant を 1 つだけ残している。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EncodingPass {
     /// シングルパス
     OnePass,
-    /// 1 パス目
-    FirstPass,
-    /// 2 パス目
-    SecondPass,
-    /// 3 パス目
-    ThirdPass,
 }
 
 /// タイムベース (aom_rational)
@@ -906,7 +905,10 @@ pub struct EncoderConfig {
     /// エラー耐性モード
     pub g_error_resilient: bool,
 
-    /// マルチパスエンコーディングモード
+    /// エンコーディングモード (シングルパスのみ対応)
+    ///
+    /// `None` の場合は libaom のデフォルト (AOM_RC_ONE_PASS) が使われる。
+    /// 現状は `Some(EncodingPass::OnePass)` と同一の挙動になる。
     pub g_pass: Option<EncodingPass>,
 
     /// 先読みフレーム数 (0 で無効)
@@ -1449,12 +1451,10 @@ impl Encoder {
             aom_config.g_input_bit_depth = input_bit_depth as _;
         }
 
+        // 将来マルチパス variant を追加する際の拡張点として、OnePass のみのマッピングを残す
         if let Some(pass) = config.g_pass {
             aom_config.g_pass = match pass {
                 EncodingPass::OnePass => sys::aom_enc_pass_AOM_RC_ONE_PASS,
-                EncodingPass::FirstPass => sys::aom_enc_pass_AOM_RC_FIRST_PASS,
-                EncodingPass::SecondPass => sys::aom_enc_pass_AOM_RC_SECOND_PASS,
-                EncodingPass::ThirdPass => sys::aom_enc_pass_AOM_RC_THIRD_PASS,
             };
         }
 

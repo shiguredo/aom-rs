@@ -283,7 +283,7 @@ while let Some(frame) = decoder.next_frame() {
 | `g_input_bit_depth` | `Option<u32>` | 入力フレームのビット深度 |
 | `g_timebase` | `AomRational` | タイムベース (例: 30fps なら num=1, den=30) |
 | `g_error_resilient` | `bool` | エラー耐性モード |
-| `g_pass` | `Option<EncodingPass>` | マルチパスエンコーディングモード |
+| `g_pass` | `Option<EncodingPass>` | エンコーディングモード (シングルパスのみ対応) |
 | `g_lag_in_frames` | `Option<u32>` | 先読みフレーム数 |
 
 #### レート制御
@@ -502,12 +502,11 @@ while let Some(frame) = decoder.next_frame() {
 
 ### `EncodingPass`
 
+シングルパスのみ対応しています。マルチパスエンコード (FirstPass / SecondPass / ThirdPass) には対応していません。`g_pass` フィールドと `EncodingPass` は、将来のマルチパス対応に向けた拡張点として残しています。
+
 | バリアント | 説明 |
 |---|---|
 | `OnePass` | シングルパス |
-| `FirstPass` | 1 パス目 |
-| `SecondPass` | 2 パス目 |
-| `ThirdPass` | 3 パス目 |
 
 ### `EncodeOptions`
 
