@@ -45,6 +45,8 @@
   - @voluntas
 - [FIX] `Encoder::init` の unsafe コードに `DecodedFrame::plane` と同等の防御的検証（planes null チェック・stride 正値チェック・`checked_mul` + `isize::MAX` オーバーフローチェック）を追加する
   - @voluntas
+- [FIX] 16-bit フォーマット (I42016 / I42216 / I44416) でエンコードする際に `AOM_CODEC_USE_HIGHBITDEPTH` フラグを init 時に付与し、エンコードが失敗する問題を修正する
+  - @voluntas
 
 ### misc
 

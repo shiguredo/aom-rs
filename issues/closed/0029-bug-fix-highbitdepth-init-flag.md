@@ -1,7 +1,7 @@
 # 16-bit エンコード時に AOM_CODEC_USE_HIGHBITDEPTH フラグを立てる
 
 - Created: 2026-08-02
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-06
 - Branch: feature/fix-highbitdepth-init-flag
 - Polished: 2026-08-06
 - Reporter: @voluntas
@@ -50,8 +50,8 @@ init フラグの修正で `sys::AOM_CODEC_USE_HIGHBITDEPTH` 定数を参照す�
 
 ## 解決方法
 
-- 設計方針のとおり `Encoder::init` で init フラグを条件付きで付与する (16-bit フォーマット指定時のみ)
-- build.rs の DOCS_RS 分岐のダミー bindings に `AOM_CODEC_USE_HIGHBITDEPTH` 定数を追加する (ダミー全体の完全性修復はスコープ外)
-- 16-bit のラウンドトリップテストを追加する (16-bit カラーバー生成ヘルパー + 16-bit 対応 PSNR + 16-bit 対応の Y プレーン抽出ヘルパー)
-- 修正と同一 PR に回帰テストを含めること。16-bit 系のラウンドトリップは本 issue の回帰テストとして実装し、テストヘルパーは issue 0021 の実装時にも再利用できる形にする
-- README に 16-bit フォーマットの利用条件 (`g_bit_depth` / `g_profile` の設定が必須であること) を追記する
+- `Encoder::init` で 16-bit フォーマット (I42016 / I42216 / I44416) を指定した場合のみ `AOM_CODEC_USE_HIGHBITDEPTH` を init フラグに付与するように修正した (src/lib.rs の `Encoder::init`)。8-bit フォーマットではフラグを立てないため既存の 8-bit エンコード経路の挙動は不変
+- build.rs の DOCS_RS 分岐のダミー bindings に `AOM_CODEC_USE_HIGHBITDEPTH` 定数 (実値 0x40000) と `aom_codec_flags_t` 型を追加した (docs.rs ビルドで必要になるため)
+- tests/helpers/mod.rs に 16-bit 用のテストヘルパーを追加した: 16-bit カラーバー生成 (`generate_colorbar_16bit`)、16-bit PSNR (`psnr_y_16bit`)、16-bit Y プレーン抽出 (`extract_y_plane_16bit`)、エンコード / デコードヘルパー (`encode_frames_16bit` / `decode_frames_16bit`)、ラウンドトリップヘルパー (`roundtrip_colorbar_16bit`)、設定ヘルパー (`highbitdepth_config`)
+- tests/roundtrip.rs に 16-bit のラウンドトリップテスト 4 件を追加した (I42016+10-bit+profile 0 / I42216+10-bit+profile 2 / I44416+10-bit+profile 1 / I42016+12-bit+profile 2)。デコード結果のフォーマットが入力と同じ 16-bit フォーマットであること (8-bit に落ちていないこと) も検証する
+- README に 16-bit フォーマットの利用条件 (`g_bit_depth` / `g_profile` の設定と有効な組み合わせ) を追記した

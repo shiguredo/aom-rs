@@ -172,6 +172,23 @@ while let Some(frame) = encoder.next_frame() {
 }
 ```
 
+### 16-bit フォーマットのエンコード
+
+`I42016` / `I42216` / `I44416` を使用する場合は、`g_bit_depth` (10 または 12) と `g_profile` をフォーマットに合わせて設定してください。`g_profile` がフォーマットと不整合な場合、またはピクセル値が `1 << g_bit_depth` 以上の値の場合、`Encoder::new` か初回 `encode` が `AOM_CODEC_INVALID_PARAM` で失敗します。
+
+- `g_bit_depth`: 16-bit 入力のピクセル値は `1 << g_bit_depth` 未満に制限されます (10-bit なら 0-1023)
+- `g_profile`: フォーマット × ビット深度の有効な組み合わせは次のとおりです
+  - `I42016` + 10-bit は profile 0
+  - `I42216` + 10-bit は profile 2
+  - `I44416` + 10-bit は profile 1
+  - 12-bit は profile 2 のみ
+
+```rust
+let mut config = EncoderConfig::new(1920, 1080, ImageFormat::I42016);
+config.g_bit_depth = Some(10);
+config.g_profile = 0;
+```
+
 ### デコード
 
 ```rust

@@ -59,6 +59,40 @@ fn test_psnr_realtime_vbr() {
 }
 
 // ============================================================================
+// 16-bit フォーマットテスト
+// ============================================================================
+
+/// I42016 + 10-bit + profile 0 のラウンドトリップ
+///
+/// デコード結果が 8-bit に落ちず I42016 のままであることも確認する。
+#[test]
+fn test_roundtrip_i42016_10bit() {
+    let config = highbitdepth_config(320, 240, ImageFormat::I42016, 10, 0);
+    roundtrip_colorbar_16bit(config, 10, 50.0);
+}
+
+/// I42216 + 10-bit + profile 2 のラウンドトリップ
+#[test]
+fn test_roundtrip_i42216_10bit() {
+    let config = highbitdepth_config(320, 240, ImageFormat::I42216, 10, 2);
+    roundtrip_colorbar_16bit(config, 10, 50.0);
+}
+
+/// I44416 + 10-bit + profile 1 のラウンドトリップ
+#[test]
+fn test_roundtrip_i44416_10bit() {
+    let config = highbitdepth_config(320, 240, ImageFormat::I44416, 10, 1);
+    roundtrip_colorbar_16bit(config, 10, 50.0);
+}
+
+/// I42016 + 12-bit + profile 2 のラウンドトリップ
+#[test]
+fn test_roundtrip_i42016_12bit() {
+    let config = highbitdepth_config(320, 240, ImageFormat::I42016, 12, 2);
+    roundtrip_colorbar_16bit(config, 10, 50.0);
+}
+
+// ============================================================================
 // GoodQuality モードテスト
 // ============================================================================
 
