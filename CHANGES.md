@@ -49,6 +49,8 @@
   - @voluntas
 - [FIX] 16-bit フォーマット (I42016 / I42216 / I44416) でエンコードする際に `AOM_CODEC_USE_HIGHBITDEPTH` フラグを init 時に付与し、エンコードが失敗する問題を修正する
   - @voluntas
+- [FIX] `Encoder::new` で画像フォーマット × `g_profile` × ビット深度の整合を事前検証し、「init 成功 → 初回 `encode` での遅延失敗」を解消する
+  - @voluntas
 
 ### misc
 
