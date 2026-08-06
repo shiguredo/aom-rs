@@ -82,6 +82,8 @@
   - @voluntas
 - [UPDATE] CI / release ワークフローの Slack 通知とリリース手順を修正する (slack_notify の `always()` / `GH_TOKEN`、タグと Cargo.toml のバージョン照合、正式リリースの draft 化)
   - @voluntas
+- [FIX] `canary.py` のバージョン検出・変換を Cargo.toml の [package] セクションの version 行に限定し、rust-version 等への誤マッチを防ぐ
+  - @voluntas
 
 ## 2026.1.0
 

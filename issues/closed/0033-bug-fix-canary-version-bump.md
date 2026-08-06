@@ -1,7 +1,7 @@
 # canary.py のバージョン検出・変換を [package] の version 行に限定する
 
 - Created: 2026-08-02
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-06
 - Branch: feature/fix-canary-version-bump
 - Polished: 2026-08-06
 - Reporter: @voluntas
@@ -33,10 +33,9 @@
 
 ## 解決方法
 
-- バージョン検出・変換・再検証の正規表現を、[package] セクションの version 行 (行頭アンカーによるフィールド名の完全一致) に限定する
-- 変換結果の確認は既存の `--dry-run` オプションを利用する (テスト基盤は新設しない)
-- 検証:
-  - 一時的に Cargo.toml のフィールド順を入れ替えて (rust-version を version より先に) `--dry-run` で変換結果を確認し、元に戻す (完了条件 1)
-  - あわせて rust-version の値を一時的に `"1.93.0"` (3 桁表記) に変更して同様に確認し、元に戻す (完了条件 2)
-  - version 行を一時的に `2026.2.0` に変更して非 canary 分岐の変換を確認し、元に戻す (完了条件 3)
-  - canary 分岐 (`2026.2.0-canary.5` → `2026.2.0-canary.6`) は現状の Cargo.toml のまま `--dry-run` で確認する (完了条件 3)
+- バージョン検出・変換・再検証のすべての正規表現を、行頭アンカーによるフィールド名の完全一致に限定した (rust-version 等への誤マッチを防止)
+- 検出・再検証は `VERSION_LINE_RE` 定数 (`^\s*version\s*=\s*"([\w.-]+)"` + MULTILINE) に一元化した
+- [package] セクションの範囲は行頭アンカー (`^\s*\[package\]`) で検出し、次の任意の [ セクションで境界にした (release.yml のバージョン照合と同じ定義。package.metadata の version 行を検出対象外にした)
+- 変換の正規表現も行頭アンカー + MULTILINE にし、インデントを保持する形にした
+- 変換ロジック自体 (minor +1 / canary +1) は変更していない
+- 検証: 一時 Cargo.toml でフィールド順の入れ替え (rust-version を version より先に) と rust-version の 3 桁表記化を行い、`--dry-run` で変換結果を確認した (完了条件 1・2)。非 canary 分岐 (2026.2.0 → 2026.3.0-canary.0) と canary 分岐 (2026.2.0-canary.5 → 2026.2.0-canary.6) も `--dry-run` で確認した (完了条件 3)。修正前コードで rust-version への誤マッチ (1.93 検出) が再現することも確認した
