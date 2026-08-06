@@ -1388,6 +1388,61 @@ fn map_kf_mode(mode: KeyframeMode) -> sys::aom_kf_mode {
     }
 }
 
+/// 画像フォーマット × g_profile × ビット深度の整合を事前検証する
+///
+/// libaom はこの検証を encode 時に行うため、aom-rs 側で事前に検証して
+/// 「init 成功 → 遅延失敗」を防ぐ。libaom の検証条件 (av1/av1_cx_iface.c の
+/// validate_img / av1/encoder/encoder.c の av1_receive_raw_frame) に合わせる。
+///
+/// 有効ビット深度は 16-bit フォーマット (I42016 / I42216 / I44416) では
+/// `g_bit_depth` (None なら 8)、8-bit フォーマットでは常に 8 とする。
+///
+/// 検証対象外の組み合わせ (libaom が init 時に拒否する):
+/// - 8-bit フォーマット + g_bit_depth > 8 (aom/src/aom_encoder.c の aom_codec_enc_init_ver)
+/// - 12-bit + profile < 2 (av1/av1_cx_iface.c の validate_config)
+/// - profile 1 + monochrome (av1/av1_cx_iface.c の validate_config)
+fn validate_image_format_profile(config: &EncoderConfig) -> Result<(), Error> {
+    // 8-bit フォーマットは g_bit_depth の指定を判定に使わない
+    let effective_bit_depth = match config.image_format {
+        ImageFormat::I42016 | ImageFormat::I42216 | ImageFormat::I44416 => {
+            config.g_bit_depth.unwrap_or(8)
+        }
+        _ => 8,
+    };
+
+    // 12-bit は profile < 2 を libaom が init 時に拒否するため事前検証の対象外
+    if effective_bit_depth == 12 {
+        return Ok(());
+    }
+
+    // 有効ビット深度 8-10 の組み合わせを検証する。
+    //
+    // 有効な組み合わせ (libaom の validate_img / av1_receive_raw_frame と
+    // AV1 仕様の profile 定義による):
+    // - 4:2:0 系 (I420 / Yv12 / Nv12 / I42016) は profile 0
+    // - 4:2:2 系 (I422 / I42216) は profile 2
+    // - 4:4:4 系 (I444 / I44416) は profile 1 (monochrome なら profile 0 も許可)
+    let monochrome = config.monochrome.unwrap_or(false);
+    let profile_allowed = match config.image_format {
+        ImageFormat::I420 | ImageFormat::Yv12 | ImageFormat::Nv12 | ImageFormat::I42016 => {
+            config.g_profile == 0
+        }
+        ImageFormat::I422 | ImageFormat::I42216 => config.g_profile == 2,
+        ImageFormat::I444 | ImageFormat::I44416 => {
+            config.g_profile == 1 || (monochrome && config.g_profile == 0)
+        }
+    };
+
+    if !profile_allowed {
+        return Err(Error::with_reason(
+            sys::aom_codec_err_t_AOM_CODEC_INVALID_PARAM,
+            "shiguredo_aom::Encoder::init",
+            "invalid image format / g_profile combination",
+        ));
+    }
+    Ok(())
+}
+
 impl Encoder {
     /// エンコーダーインスタンスを生成する
     pub fn new(config: EncoderConfig) -> Result<Self, Error> {
@@ -1414,6 +1469,8 @@ impl Encoder {
         mut aom_config: sys::aom_codec_enc_cfg,
         iface: *const sys::aom_codec_iface,
     ) -> Result<Self, Error> {
+        validate_image_format_profile(config)?;
+
         // --- aom_codec_enc_cfg_t フィールドの設定 ---
 
         // 基本設定

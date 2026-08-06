@@ -189,6 +189,12 @@ config.g_bit_depth = Some(10);
 config.g_profile = 0;
 ```
 
+8-bit フォーマットにも profile の制約があり、不正な組み合わせは `Encoder::new` が `AOM_CODEC_INVALID_PARAM` で拒否します。
+
+- `I420` / `Yv12` / `Nv12` は profile 0
+- `I422` は profile 2
+- `I444` は profile 1 (`monochrome: Some(true)` なら profile 0 も可)
+
 ### デコード
 
 ```rust

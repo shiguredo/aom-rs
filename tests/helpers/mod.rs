@@ -539,8 +539,8 @@ pub(crate) fn all_intra_config(
 
 /// 16-bit フォーマット用のエンコーダー設定を生成するヘルパー
 ///
-/// 16-bit フォーマットには `g_bit_depth` と `g_profile` の指定が必須である
-/// （libaom の encode 時検証の組み合わせ要件。詳細は README 参照）。
+/// 16-bit フォーマットでは `g_bit_depth` が有効ビット深度を決め、
+/// `g_profile` はフォーマットとの整合が検証される (詳細は README 参照)。
 pub(crate) fn highbitdepth_config(
     width: u32,
     height: u32,
