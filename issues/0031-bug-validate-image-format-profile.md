@@ -1,7 +1,7 @@
 # 画像フォーマットと g_profile / g_bit_depth の整合を Encoder::init で検証する
 
 - Created: 2026-08-02
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-06
 - Branch: feature/fix-validate-image-format-profile
 - Polished: 2026-08-06
 - Reporter: @voluntas
@@ -61,6 +61,8 @@ monochrome: `monochrome: Some(true)` の場合は I444 / I44416 + profile 0 を�
 
 ## 解決方法
 
-- `Encoder::init` に `image_format` × `g_profile` × 有効ビット深度の事前検証を追加する
-- 検証の回帰テストを追加する (不正な組み合わせが init でエラーになること、正しい組み合わせが成功すること。判定表の全セルをカバーする。検証対象外のセル: 8-bit フォーマット + `g_bit_depth > 8`、12-bit + profile < 2、profile 1 + monochrome は libaom の init エラーを期待する)
-- テストヘルパーはフォーマット × ビット深度から有効な profile を導出する関数とし、issue 0029 / 0021 の実装時にも再利用できる形にする
+- src/lib.rs に `validate_image_format_profile` を追加し、`Encoder::init` の先頭で画像フォーマット × `g_profile` × 有効ビット深度の整合を事前検証するようにした。不正な組み合わせは `Error::with_reason` で `AOM_CODEC_INVALID_PARAM` を返す (libaom の encode 時検証と同じエラーコード)
+- 有効ビット深度は 16-bit フォーマット (I42016 / I42216 / I44416) では `g_bit_depth` (None なら 8)、8-bit フォーマットでは常に 8 とした
+- 検証対象外 (libaom が init 時に拒否): 8-bit フォーマット + `g_bit_depth > 8`、12-bit + profile < 2、profile 1 + monochrome。doc に libaom 側の拒否箇所 (aom_codec_enc_init_ver / validate_config) を明記した
+- tests/image_format_profile.rs を新規作成し、判定表の全セル (ハードコードした `VALID_PROFILE_TABLE` に基づく網羅テスト)、不正 7 ケースのエラーメッセージ検証、正しい組み合わせのエンコード成功 (I422+p2 / I444+p1 / I444+mono+p0)、12-bit 非拒否、`g_bit_depth` 未指定 (None) の分岐、検証対象外 3 ケースの libaom init エラーを固定した
+- README に 8-bit フォーマットの profile 制約を追記した
