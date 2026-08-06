@@ -3,7 +3,7 @@
 - Created: 2026-08-02
 - Completed: {YYYY-MM-DD}
 - Branch: feature/fix-highbitdepth-init-flag
-- Polished: {YYYY-MM-DD}
+- Polished: 2026-08-06
 - Reporter: @voluntas
 
 ## 目的
@@ -23,22 +23,35 @@
 
 ## 設計方針
 
-`Encoder::init` で 16-bit フォーマット (I42016 / I42216 / I44416) または `g_bit_depth > 8` を指定した場合のみ `AOM_CODEC_USE_HIGHBITDEPTH` を init フラグに付与する。8-bit フォーマットのままフラグを立てると逆に 8-bit エンコードが全滅するため、必ず条件付きで立てる。
+`Encoder::init` で 16-bit フォーマット (I42016 / I42216 / I44416) を指定した場合のみ `AOM_CODEC_USE_HIGHBITDEPTH` を init フラグに付与する。8-bit フォーマットのままフラグを立てると逆に 8-bit エンコードが全滅するため、必ず条件付きで立てる。
 
-あわせて以下を確認する:
+`g_bit_depth > 8` を 8-bit フォーマットと併用した場合はフラグを立てない。フラグを立てると init は成功するが encode が毎回失敗する (libaom `aom/src/aom_encoder.c` の aom_codec_encode が画像フォーマットの HIGHBITDEPTH ビットと init フラグの一致を要求する) 遅延失敗になるためである。フラグを立てなければ libaom が init 時に `AOM_CODEC_INVALID_PARAM` で明確なエラーを返す (修正前と同じ挙動)。この組み合わせの事前検証の追加は本 issue のスコープ外とする (issue 0031 は image_format × g_profile が対象であり、image_format × g_bit_depth は含まない)。
 
-- `g_bit_depth` / `g_input_bit_depth` の整合 (libaom は `g_input_bit_depth > g_bit_depth` をエラーにする)
-- 16-bit フォーマット × g_profile の制約 (I42216 は profile 2 必須、I44416 は profile 0 不可。issue 0031 と関連)
+16-bit フォーマットを使用する場合は `g_bit_depth` (10 または 12) と `g_profile` の設定も必要である:
+
+- `g_bit_depth`: 16-bit 入力のピクセル値は `1 << g_bit_depth` 未満に制限される (libaom の validate_hbd_input、デフォルト有効)。`g_bit_depth` が 8 のままでは 10-bit 値域のデータがエラーになる
+- `g_profile`: フォーマット × ビット深度の有効な組み合わせは次のとおり (libaom の validate_img / encoder の profile 検証と AV1 仕様の profile 定義)
+  - I42016 + 10-bit は profile 0 (profile 2 + 10-bit は 4:2:2 のみ許可のため不可)
+  - I42216 + 10-bit は profile 2
+  - I44416 + 10-bit は profile 1 (profile 0 不可、profile 2 + 10-bit は 4:2:2 のみ許可のため不可)
+  - 12-bit は profile 2 のみ (profile < 2 は 12-bit 不可)
+- `g_input_bit_depth`: libaom の validate_config が `g_input_bit_depth > g_bit_depth` をエラーにするため、aom-rs 側での追加の事前検証は行わない
+
+init フラグの修正で `sys::AOM_CODEC_USE_HIGHBITDEPTH` 定数を参照するようになるため、docs.rs 用のダミー bindings (build.rs の DOCS_RS 分岐) に定数を追加する必要がある。ただし、DOCS_RS 分岐のダミー bindings は現在も完全性が不足している (issue 0022 で完全性検証が未完了のまま closed されている) ため、本 issue ではフラグ修正に必要な定数の追加のみを行い、ダミー全体の完全性修復はスコープ外とする。
 
 ## 完了条件
 
-- I42016 / I42216 / I44416 で `Encoder::new` → `encode` → `finish` → デコードが成功すること
-- `g_bit_depth: Some(10)` / `Some(12)` で `Encoder::new` が成功すること
+- I42016 + `g_bit_depth: Some(10)` + `g_profile: 0` で `Encoder::new` → `encode` → `finish` → デコードが成功すること
+- I42216 + `g_bit_depth: Some(10)` + `g_profile: 2` で同様に成功すること
+- I44416 + `g_bit_depth: Some(10)` + `g_profile: 1` で同様に成功すること
+- I42016 + `g_bit_depth: Some(12)` + `g_profile: 2` で同様に成功すること
+- デコード結果のフォーマットが入力と同じ 16-bit フォーマットであること (8-bit に落ちていないこと)
 - 既存の 8-bit テストが全て通ること (回帰なし)
 
 ## 解決方法
 
-- init フラグの条件付き付与
-- 10-bit のラウンドトリップテスト追加 (16-bit カラーバー生成ヘルパー + 16-bit 対応 PSNR)
-- 修正と同一 PR に回帰テストを含めること
-- 修正後は prebuilt 配布物の bindings.rs に `AOM_CODEC_USE_HIGHBITDEPTH` 定数が含まれることを確認する
+- 設計方針のとおり `Encoder::init` で init フラグを条件付きで付与する (16-bit フォーマット指定時のみ)
+- build.rs の DOCS_RS 分岐のダミー bindings に `AOM_CODEC_USE_HIGHBITDEPTH` 定数を追加する (ダミー全体の完全性修復はスコープ外)
+- 16-bit のラウンドトリップテストを追加する (16-bit カラーバー生成ヘルパー + 16-bit 対応 PSNR + 16-bit 対応の Y プレーン抽出ヘルパー)
+- 修正と同一 PR に回帰テストを含めること。16-bit 系のラウンドトリップは本 issue の回帰テストとして実装し、テストヘルパーは issue 0021 の実装時にも再利用できる形にする
+- README に 16-bit フォーマットの利用条件 (`g_bit_depth` / `g_profile` の設定が必須であること) を追記する
