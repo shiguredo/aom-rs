@@ -65,6 +65,8 @@ fn main() {
                 "pub const aom_kf_mode_AOM_KF_DISABLED: aom_kf_mode = 0;",
                 "pub const aom_kf_mode_AOM_KF_FIXED: aom_kf_mode = 0;",
                 "pub const aom_kf_mode_AOM_KF_AUTO: aom_kf_mode = 1;",
+                "pub type aom_codec_flags_t = i64;",
+                "pub const AOM_CODEC_USE_HIGHBITDEPTH: aom_codec_flags_t = 0x40000;",
             ),
         )
         .expect("write file error");

@@ -342,7 +342,7 @@ impl DecodedFrame<'_> {
     // - libaom は AV1 の 10-bit プロファイル（Profile 0 の 10-bit など）をサポート
     // - 高ビット深度データは 16-bit リトルエンディアン形式で格納される
     // - 実際の値範囲は 10-bit (0-1023) だが、上位 6 ビットは未使用
-    // - ストライドは 16-bit 単位（バイト数は width * 2）で計算される
+    // - ストライドはバイト単位で計算される（16-bit なら 1 ピクセル 2 バイト）
     pub fn is_high_depth(&self) -> bool {
         matches!(
             self.0.fmt,
@@ -1586,13 +1586,32 @@ impl Encoder {
             aom_config.use_fixed_qp_offsets = if v { 1 } else { 0 };
         }
 
+        // 16-bit フォーマット (I42016 / I42216 / I44416) を指定した場合のみ
+        // AOM_CODEC_USE_HIGHBITDEPTH を init フラグに付与する。
+        //
+        // libaom は aom_codec_encode 時に画像フォーマットの HIGHBITDEPTH ビットと
+        // init フラグの一致を要求する (aom/src/aom_encoder.c の aom_codec_encode)。
+        // 8-bit フォーマットのままフラグを立てると init は成功するが encode が
+        // 毎回 AOM_CODEC_INVALID_PARAM で失敗するため、必ず条件付きで立てる。
+        // g_bit_depth > 8 を 8-bit フォーマットと併用した場合はフラグを立てず、
+        // libaom の init 時検証 (aom/src/aom_encoder.c の aom_codec_enc_init_ver)
+        // にエラーを委ねる。
+        let init_flags: sys::aom_codec_flags_t = if matches!(
+            config.image_format,
+            ImageFormat::I42016 | ImageFormat::I42216 | ImageFormat::I44416
+        ) {
+            sys::AOM_CODEC_USE_HIGHBITDEPTH as sys::aom_codec_flags_t
+        } else {
+            0
+        };
+
         let mut ctx = MaybeUninit::<sys::aom_codec_ctx>::zeroed();
         unsafe {
             let code = sys::aom_codec_enc_init_ver(
                 ctx.as_mut_ptr(),
                 iface,
                 &aom_config,
-                0, // フラグなし
+                init_flags,
                 sys::AOM_ENCODER_ABI_VERSION as i32,
             );
             Error::check(code, "aom_codec_enc_init_ver", None)?;
