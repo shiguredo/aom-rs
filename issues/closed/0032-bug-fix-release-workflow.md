@@ -1,7 +1,7 @@
 # CI / Release ワークフローを修正する
 
 - Created: 2026-08-02
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-06
 - Branch: feature/fix-release-workflow
 - Polished: 2026-08-06
 - Reporter: @voluntas
@@ -44,13 +44,9 @@ release.yml は任意タグ (`"*"`) で発火し、タグ名をそのまま Rele
 
 ## 解決方法
 
-- ci.yml の `slack_notify` に `if: ${{ always() }}` を追加する
-- release.yml の `slack_notify` に `GH_TOKEN: ${{ github.token }}` を追加する
-- github-release ジョブにバージョン照合ステップを追加する (`gh release create` の前。タグ名と Cargo.toml [package] の version を照合し、不一致なら失敗させる)
-- github-release ジョブの正式リリース作成を `gh release create --draft` に変更し、publish ジョブに `gh release edit --draft=false` を追加する (publish ジョブの permissions に `contents: write` を追加し、`GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}` env を設定する)
-- CHANGES.md の misc セクションに記録する
-- 検証:
-  - CI のジョブを意図的に失敗させて、Slack 通知が届くことを確認する (確認後に戻す)
-  - Cargo.toml の version を次の canary (例: 2026.2.0-canary.6) に更新し、release ワークフローが通ることを確認する (canary.py はバージョン更新からタグ付け・プッシュまで一括で行う。canary は prerelease として公開され crates.io にも publish される)
-  - タグと Cargo.toml の version を意図的にズラしたケースで GitHub Release が作成されずに失敗することを確認する
-  - 正式リリースの draft パスはこの検証では通らないため、コードレビューで担保する
+- `.github/workflows/ci.yml` の `slack_notify` に `if: ${{ always() }}` を追加した (ジョブ失敗時に Slack 通知が送られるように)
+- `.github/workflows/release.yml` の `slack_notify` に `GH_TOKEN: ${{ github.token }}` env を追加した (slack-notify スキルの推奨と ci.yml との一貫性)。あわせて `timeout-minutes` を ci.yml と同じ 5 分に統一した
+- github-release ジョブにタグ名と Cargo.toml [package] の version の照合ステップを追加した (`gh release create` の前。不一致ならジョブが失敗する)。version 読み取りは sed で [package] セクションに限定している (package.metadata.external-dependencies.aom の version を誤読しない)
+- github-release ジョブに既存 draft の削除ステップを追加した (前回失敗で残った同名 draft があると同一タグの再実行が失敗するため。isDraft チェックで public release は削除しない)
+- 正式リリースを `gh release create --draft` で作成するように変更し、cargo publish 成功後に実行される `undraft-release` ジョブ (needs: publish + github-release、正式リリースのみ) が `gh release edit --draft=false` で公開するようにした。canary は従来どおり prerelease として作成時に公開される
+- CHANGES.md の misc セクションに記録した

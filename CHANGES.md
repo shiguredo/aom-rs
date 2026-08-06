@@ -80,6 +80,8 @@
   - @voluntas
 - [UPDATE] CI / release ワークフローの composite action 参照を SHA ピン留めにする
   - @voluntas
+- [UPDATE] CI / release ワークフローの Slack 通知とリリース手順を修正する (slack_notify の `always()` / `GH_TOKEN`、タグと Cargo.toml のバージョン照合、正式リリースの draft 化)
+  - @voluntas
 
 ## 2026.1.0
 
