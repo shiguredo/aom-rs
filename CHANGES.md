@@ -1,17 +1,21 @@
 # 変更履歴
 
-- UPDATE
-  - 後方互換がある変更
-- ADD
-  - 後方互換がある追加
 - CHANGE
   - 後方互換のない変更
+- ADD
+  - 後方互換がある追加
+- UPDATE
+  - 後方互換がある変更
 - FIX
   - バグ修正
 
 ## develop
 
-- [UPDATE] libaom を v3.13.2 から v3.14.1 に更新する
+- [CHANGE] MSRV (`rust-version`) を 1.88 から 1.93 に引き上げる
+  - @voluntas
+- [CHANGE] `KeyframeMode` に `Disabled` variant を追加する
+  - @voluntas
+- [CHANGE] `EncodingPass` を OnePass のみに削減し、マルチパスエンコードを非対応とする
   - @voluntas
 - [ADD] `Encoder::reconfigure(&ReconfigureParams)` を追加してターゲットビットレートをランタイム変更可能にする
   - @voluntas
@@ -35,11 +39,7 @@
   - @voluntas
 - [ADD] ubuntu-26.04 / ubuntu-26.04-arm の prebuilt バイナリをサポートする
   - @voluntas
-- [CHANGE] MSRV (`rust-version`) を 1.88 から 1.93 に引き上げる
-  - @voluntas
-- [CHANGE] `KeyframeMode` に `Disabled` variant を追加する
-  - @voluntas
-- [CHANGE] `EncodingPass` を OnePass のみに削減し、マルチパスエンコードを非対応とする
+- [UPDATE] libaom を v3.13.2 から v3.14.1 に更新する
   - @voluntas
 - [FIX] `KeyframeMode::Fixed` の rustdoc を libaom 実態 (`AOM_KF_DISABLED` の deprecated エイリアス) に合わせて修正し、`#[deprecated]` 属性を付与する
   - @voluntas
@@ -56,6 +56,16 @@
 
 ### misc
 
+- [ADD] `examples/midstream_reconfigure.rs` を追加し、30fps エンコード途中でビットレートを切り替える典型パターンを示す
+  - @voluntas
+- [ADD] reconfigure 周辺の単体テストを拡充する (ビットレート反映の検証 / PSNR 検証 / force_keyframe との併用 / 失敗時のロールバック検証)
+  - @voluntas
+- [ADD] realtime 制御フラグ周辺のテストを拡充する (`*_cost_upd_freq` 値域エラー / `KeyframeMode::Auto` / `KeyframeMode::Fixed` の deprecated alias 同値性)
+  - @voluntas
+- [ADD] CI に ubuntu-26.04 / ubuntu-26.04-arm を追加する
+  - @voluntas
+- [ADD] `Encoder` / `Decoder` のスレッド間移動検証テストを追加する
+  - @voluntas
 - [UPDATE] build-dependencies の `shiguredo_cmake` を 4.3 から 4.4 に更新する
   - @voluntas
 - [UPDATE] `pbt/` の `proptest` を 1.7 から 1.11 に更新する
@@ -71,16 +81,6 @@
 - [UPDATE] `prek.toml` を shiguredo-rust 規約に合わせて更新する (`cargo test` を pre-push のみ、tombi 追加)
   - @voluntas
 - [UPDATE] 統合テストを `tests/roundtrip.rs` と `tests/helpers/` に再配置する
-  - @voluntas
-- [ADD] `examples/midstream_reconfigure.rs` を追加し、30fps エンコード途中でビットレートを切り替える典型パターンを示す
-  - @voluntas
-- [ADD] reconfigure 周辺の単体テストを拡充する (ビットレート反映の検証 / PSNR 検証 / force_keyframe との併用 / 失敗時のロールバック検証)
-  - @voluntas
-- [ADD] realtime 制御フラグ周辺のテストを拡充する (`*_cost_upd_freq` 値域エラー / `KeyframeMode::Auto` / `KeyframeMode::Fixed` の deprecated alias 同値性)
-  - @voluntas
-- [ADD] CI に ubuntu-26.04 / ubuntu-26.04-arm を追加する
-  - @voluntas
-- [ADD] `Encoder` / `Decoder` のスレッド間移動検証テストを追加する
   - @voluntas
 - [UPDATE] CI / release ワークフローの composite action 参照を SHA ピン留めにする
   - @voluntas
