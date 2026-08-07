@@ -1,7 +1,7 @@
 # DOCS_RS ダミー bindings の完全性を検証・修復する
 
 - Created: 2026-08-06
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-07
 - Branch: feature/fix-docs-rs-dummy-bindings
 - Polished: 2026-08-07
 
@@ -34,6 +34,8 @@ build.rs の DOCS_RS 分岐のダミー bindings は少数の型・定数のみ�
 
 ## 解決方法
 
-- source-build で生成された bindings.rs を出力先から取得し、lib.rs が使用する `sys::` シンボルとその依存型・定数の定義をダミー bindings にコピーする
-- `cargo clean && DOCS_RS=1 cargo build` でビルドが通ることと、`DOCS_RS=1 cargo doc --no-deps` でドキュメントが生成されることを確認する
-- 通常ビルドは `cargo build` (prebuilt) と `cargo build --features source-build` の両方で通ることを確認する (回帰なし)
+- `build/dummy_bindings.rs` を新規作成し、src/lib.rs が参照するシンボルとその依存定義 (struct / union / type / const / extern 関数) を、source-build で生成した bindings.rs から抽出して配置した
+- `build.rs` の DOCS_RS 分岐を、`concat!` による不完全なダミー定義から `include_str!` によるファイル読み込みに変更した
+- `Cargo.toml` の include に `/build/**/*` を追加し、docs.rs の実運用 (crates.io の tarball) でもダミー bindings が同梱されるようにした
+- `cargo clean && DOCS_RS=1 cargo build` と `DOCS_RS=1 cargo doc --no-deps` の成功、通常ビルド (prebuilt / source-build) の回帰なしを確認した
+- 定数値は source-build の bindings.rs (libaom v3.14.1) の実値を反映している

@@ -51,6 +51,8 @@
   - @voluntas
 - [FIX] `Encoder::new` で画像フォーマット × `g_profile` × ビット深度の整合を事前検証し、「init 成功 → 初回 `encode` での遅延失敗」を解消する
   - @voluntas
+- [FIX] DOCS_RS ビルドのダミー bindings が src/lib.rs が参照するシンボルを欠落し `DOCS_RS=1 cargo build` が失敗する問題を、全シンボルをカバーする形に刷新して修正する
+  - @voluntas
 
 ### misc
 
