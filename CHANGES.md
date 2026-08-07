@@ -78,6 +78,8 @@
   - @voluntas
 - [ADD] CI に ubuntu-26.04 / ubuntu-26.04-arm を追加する
   - @voluntas
+- [ADD] `Encoder` / `Decoder` のスレッド間移動検証テストを追加する
+  - @voluntas
 - [UPDATE] CI / release ワークフローの composite action 参照を SHA ピン留めにする
   - @voluntas
 - [UPDATE] CI / release ワークフローの Slack 通知とリリース手順を修正する (slack_notify の `always()` / `GH_TOKEN`、タグと Cargo.toml のバージョン照合、正式リリースの draft 化)

@@ -1,7 +1,7 @@
 # Encoder / Decoder のスレッド間移動検証テストを追加する
 
 - Created: 2026-08-02
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-07
 - Branch: feature/add-send-across-threads-test
 - Polished: 2026-08-07
 - Reporter: @voluntas
@@ -33,6 +33,8 @@
 
 ## 解決方法
 
-- テストは `tests/send_across_threads.rs` に新規作成する
-- テスト 1 (エンコーダー): スレッド A で `Encoder::new` (g_threads = Some(4)、realtime モード) → 数フレーム encode (ワーカースレッドを生成・動作させる) → next_frame ドレイン → mpsc で送信 → メインスレッドで残りの encode → next_frame ドレイン → finish → finish 後の next_frame ドレイン が正常動作することを検証。移動前のパケット出力はスレッド A 内で確認し、移動後のエンコードでも 1 つ以上のパケットが出力されることと、finish が成功することを確認する
-- テスト 2 (デコーダー): メインスレッドで事前にエンコード (realtime モード) したパケットを用意し、スレッド A で `Decoder::new` (threads = Some(4)) → decode と next_frame ドレインを交互に数パケット分実行 → mpsc で送信 → メインスレッドで残りの decode と next_frame ドレインを交互に実行 → finish → finish 後の next_frame ドレイン が正常動作することを検証。デコード結果のフレーム数が入力フレーム数と一致すること (finish 後のドレイン分を含む) と、各フレームの幅・高さが入力フレームの解像度と一致し、Y プレーンが非空であることを確認する
+- `tests/send_across_threads.rs` を新規作成し、スレッド間移動時にエンコード・デコードが正常動作することを検証するテストを追加した
+  - `test_encoder_send_across_threads`: スレッド A で `Encoder::new` (g_threads = Some(4)、row_mt + タイル有効) → 数フレーム encode → mpsc で送信 → メインスレッドで残りの encode → finish が正常動作することを検証。全パケットをデコードして入力フレーム数と一致することと、各フレームの幅・高さ・Y プレーン非空を確認する
+  - `test_decoder_send_across_threads`: 事前エンコード (タイル付き) したパケットを用意し、スレッド A で `Decoder::new` (threads = Some(4)) → 一部パケット decode → mpsc で送信 → メインスレッドで残りの decode → finish が正常動作することを検証。デコードフレーム数が入力フレーム数と一致することと、各フレームの幅・高さ・Y プレーン非空を確認する
+- libaom の内部ワーカースレッドが実際に並列処理するよう、エンコーダーに row_mt とタイル設定を有効にした
+- 子スレッドの panic を検出できるよう、`JoinHandle` の `join` で結果を検査する構成にした
