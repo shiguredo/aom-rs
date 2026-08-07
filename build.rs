@@ -20,9 +20,12 @@ const LINK_NAME: &str = "aom";
 const SYMBOL_PREFIX: &str = "shiguredo_aom";
 
 fn main() {
-    // Cargo.toml か build.rs が更新されたら、依存ライブラリを再ビルドする
+    // Cargo.toml / build.rs / docs.rs 用ダミー bindings が更新されたら、依存ライブラリを再ビルドする。
+    // build/dummy_bindings.rs は DOCS_RS ビルド専用だが、変更を確実に反映するため
+    // 通常ビルドでも再ビルドを誘発する。
     println!("cargo::rerun-if-changed=Cargo.toml");
     println!("cargo::rerun-if-changed=build.rs");
+    println!("cargo::rerun-if-changed=build/dummy_bindings.rs");
     println!("cargo::rerun-if-env-changed=CARGO_FEATURE_SOURCE_BUILD");
     println!("cargo::rerun-if-env-changed=LIBAOM_TARGET");
     println!("cargo::rerun-if-env-changed=DOCS_RS");
@@ -48,26 +51,16 @@ fn main() {
 
     if env::var("DOCS_RS").is_ok() {
         // Docs.rs 向けのビルドでは git clone ができないので build.rs の処理はスキップして、
-        // 代わりに、ドキュメント生成時に最低限必要な定義だけをダミーで出力している。
+        // 代わりに、src/lib.rs が参照するシンボルを網羅したダミー bindings を出力している。
+        //
+        // ダミー bindings は build/dummy_bindings.rs に置き、source-build で生成した
+        // bindings.rs から src/lib.rs が使用するシンボルとその依存を抽出したもの。
+        // 定数値は libaom v3.14.1 の実値を反映している。
         //
         // 参照: https://docs.rs/about/builds
         fs::write(
             output_bindings_path,
-            concat!(
-                "pub struct aom_codec_iface;",
-                "pub struct aom_codec_cx_pkt__bindgen_ty_1__bindgen_ty_1;",
-                "pub struct aom_codec_enc_cfg;",
-                "pub struct aom_image;",
-                "pub struct aom_codec_iter_t;",
-                "pub struct aom_codec_ctx;",
-                "pub struct aom_codec_err_t;",
-                "pub type aom_kf_mode = u32;",
-                "pub const aom_kf_mode_AOM_KF_DISABLED: aom_kf_mode = 0;",
-                "pub const aom_kf_mode_AOM_KF_FIXED: aom_kf_mode = 0;",
-                "pub const aom_kf_mode_AOM_KF_AUTO: aom_kf_mode = 1;",
-                "pub type aom_codec_flags_t = i64;",
-                "pub const AOM_CODEC_USE_HIGHBITDEPTH: aom_codec_flags_t = 0x40000;",
-            ),
+            include_str!("build/dummy_bindings.rs"),
         )
         .expect("write file error");
         return;
