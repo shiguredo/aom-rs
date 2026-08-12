@@ -1,7 +1,7 @@
 # actionlint を CI に統合してワークフロー変更の構文を検証する
 
 - Created: 2026-08-06
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-08-12
 - Branch: feature/update-actionlint-to-ci
 - Polished: {YYYY-MM-DD}
 
@@ -30,6 +30,6 @@ GitHub Actions ワークフローの変更 (YAML 構文エラー・無効な式�
 
 ## 解決方法
 
-- ci.yml の fmt-clippy ジョブに actionlint の実行ステップを追加する
-- prek.toml に actionlint のフックを追加する
-- 既存のワークフローに対する actionlint の指摘を確認し、必要な修正を行う
+- 対応しない。actionlint を CI や pre-commit に導入する方針を破棄する
+- 今後 actionlint には一切触れない
+- ワークフローの検証は既存の YAML パース検証 (prek の check-yaml) のみに留める
