@@ -11,6 +11,10 @@
 
 ## develop
 
+## 2026.2.0
+
+**リリース日**: 2026-08-12
+
 - [CHANGE] MSRV (`rust-version`) を 1.88 から 1.93 に引き上げる
   - @voluntas
 - [CHANGE] `KeyframeMode` に `Disabled` variant を追加する
