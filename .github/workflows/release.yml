@@ -11,16 +11,36 @@ env:
 jobs:
   github-release:
     name: "Create GitHub Release"
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.get_version.outputs.VERSION }}
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Get the version
         id: get_version
         run: echo "VERSION=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_OUTPUT
+
+      - name: Check version matches Cargo.toml
+        env:
+          VERSION: ${{ steps.get_version.outputs.VERSION }}
+        run: |
+          # Cargo.toml の [package] セクションの version を読み取る。
+          # package.metadata.external-dependencies.aom にも version があるため、
+          # 1 段目の sed で [package] から次の [ セクションまでを範囲として抽出する。
+          CARGO_VERSION=$(
+            sed -n '/^\[package\]/,/^\[/p' Cargo.toml |
+              sed -n 's/^version *= *"\(.*\)"/\1/p'
+          )
+          if [[ -z "$CARGO_VERSION" ]]; then
+            echo "Failed to read version from Cargo.toml [package] section" >&2
+            exit 1
+          fi
+          if [[ "$VERSION" != "$CARGO_VERSION" ]]; then
+            echo "Tag version ($VERSION) does not match Cargo.toml version ($CARGO_VERSION)" >&2
+            exit 1
+          fi
 
       - name: Create Release
         env:
@@ -46,6 +66,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - target: ubuntu-26.04_x86_64
+            os: ubuntu-26.04
+            rust_target: x86_64-unknown-linux-gnu
+          - target: ubuntu-26.04_arm64
+            os: ubuntu-26.04-arm
+            rust_target: aarch64-unknown-linux-gnu
           - target: ubuntu-24.04_x86_64
             os: ubuntu-24.04
             rust_target: x86_64-unknown-linux-gnu
@@ -65,7 +91,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install build dependencies (Linux)
         if: runner.os == 'Linux'
@@ -98,10 +124,12 @@ jobs:
       - name: Upload prebuilt archive
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.github-release.outputs.version }}
+          TARGET: ${{ matrix.target }}
         run: |
-          gh release upload ${{ needs.github-release.outputs.version }} \
-            libaom-${{ matrix.target }}.tar.gz \
-            libaom-${{ matrix.target }}.tar.gz.sha256 \
+          gh release upload "$VERSION" \
+            "libaom-${TARGET}.tar.gz" \
+            "libaom-${TARGET}.tar.gz.sha256" \
             --clobber
 
   build-prebuilt-windows:
@@ -113,7 +141,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - run: rustup update stable
 
@@ -143,8 +171,9 @@ jobs:
       - name: Upload prebuilt archive
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.github-release.outputs.version }}
         run: |
-          gh release upload ${{ needs.github-release.outputs.version }} `
+          gh release upload "$env:VERSION" `
             libaom-windows_x86_64.tar.gz `
             libaom-windows_x86_64.tar.gz.sha256 `
             --clobber
@@ -156,8 +185,8 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: actions/checkout@v6
-      - uses: rust-lang/crates-io-auth-action@v1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5
         id: auth
       - run: cargo publish
         env:
@@ -165,16 +194,18 @@ jobs:
 
   slack_notify:
     needs: [github-release, build-prebuilt, build-prebuilt-windows, publish]
-    timeout-minutes: 20
+    timeout-minutes: 5
     runs-on: ubuntu-slim
     if: ${{ always() }}
     permissions:
       actions: read
     steps:
       - name: Slack Notification
-        uses: shiguredo/github-actions/.github/actions/slack-notify@main
+        uses: shiguredo/github-actions/.github/actions/slack-notify@091812b41cd7c5f2b5818d4fde613f93bf0c93b1 # main
         with:
           status: ${{ job.status }}
           slack_webhook: ${{ secrets.SLACK_WEBHOOK }}
           slack_channel: rust-oss
           notify_mode: failure_and_fixed
+        env:
+          GH_TOKEN: ${{ github.token }}

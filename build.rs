@@ -20,11 +20,18 @@ const LINK_NAME: &str = "aom";
 const SYMBOL_PREFIX: &str = "shiguredo_aom";
 
 fn main() {
-    // Cargo.toml か build.rs が更新されたら、依存ライブラリを再ビルドする
+    // Cargo.toml / build.rs / docs.rs 用ダミー bindings が更新されたら、依存ライブラリを再ビルドする。
+    // build/dummy_bindings.rs は DOCS_RS ビルド専用だが、変更を確実に反映するため
+    // 通常ビルドでも再ビルドを誘発する。
     println!("cargo::rerun-if-changed=Cargo.toml");
     println!("cargo::rerun-if-changed=build.rs");
+    println!("cargo::rerun-if-changed=build/dummy_bindings.rs");
     println!("cargo::rerun-if-env-changed=CARGO_FEATURE_SOURCE_BUILD");
     println!("cargo::rerun-if-env-changed=LIBAOM_TARGET");
+    println!("cargo::rerun-if-env-changed=DOCS_RS");
+    // docs.rs 向けダミー bindings か実 bindings かで発火する lint が異なるため、
+    // sys.rs の lint 抑止を切り替える cfg を用意する
+    println!("cargo::rustc-check-cfg=cfg(docs_rs)");
 
     // 各種変数やビルドディレクトリのセットアップ
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("infallible"));
@@ -47,20 +54,19 @@ fn main() {
 
     if env::var("DOCS_RS").is_ok() {
         // Docs.rs 向けのビルドでは git clone ができないので build.rs の処理はスキップして、
-        // 代わりに、ドキュメント生成時に最低限必要な定義だけをダミーで出力している。
+        // 代わりに、src/lib.rs が参照するシンボルを網羅したダミー bindings を出力している。
         //
-        // See also: https://docs.rs/about/builds
+        // ダミー bindings は build/dummy_bindings.rs に置き、source-build で生成した
+        // bindings.rs から src/lib.rs が使用するシンボルとその依存を抽出したもの。
+        // 定数値は libaom v3.14.1 の実値を反映している。
+        //
+        // 参照: https://docs.rs/about/builds
+        //
+        // sys.rs の lint 抑止をダミー bindings 用に切り替える
+        println!("cargo::rustc-cfg=docs_rs");
         fs::write(
             output_bindings_path,
-            concat!(
-                "pub struct aom_codec_iface;",
-                "pub struct aom_codec_cx_pkt__bindgen_ty_1__bindgen_ty_1;",
-                "pub struct aom_codec_enc_cfg;",
-                "pub struct aom_image;",
-                "pub struct aom_codec_iter_t;",
-                "pub struct aom_codec_ctx;",
-                "pub struct aom_codec_err_t;",
-            ),
+            include_str!("build/dummy_bindings.rs"),
         )
         .expect("write file error");
         return;
@@ -112,7 +118,7 @@ fn download_prebuilt(out_dir: &Path) -> PathBuf {
     fs::create_dir_all(&prebuilt_dir).expect("failed to create prebuilt directory");
 
     // curl でアーカイブをダウンロード
-    eprintln!("prebuilt ライブラリをダウンロード中: {}", archive_url);
+    eprintln!("downloading prebuilt library: {}", archive_url);
     let status = Command::new("curl")
         .args(["-fsSL", "-o"])
         .arg(&archive_path)
@@ -660,7 +666,7 @@ fn detect_linux_distro() -> String {
             if let Some(version) = line.strip_prefix("VERSION_ID=") {
                 let version = version.trim_matches('"');
                 match version {
-                    "22.04" | "24.04" => return format!("ubuntu-{}", version),
+                    "22.04" | "24.04" | "26.04" => return format!("ubuntu-{}", version),
                     _ => {}
                 }
             }

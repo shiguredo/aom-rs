@@ -2,17 +2,48 @@
 # See https://prek.j178.dev for more information.
 #:schema https://www.schemastore.org/prek.json
 
+# 最初に失敗したフックで残りをスキップする
 fail_fast = true
+# stages 未指定のフックは pre-commit でだけ実行される
+default_stages = ["pre-commit"]
+# prek install で pre-commit と pre-push の両方の Git フックを入れる
+default_install_hook_types = ["pre-commit", "pre-push"]
+exclude = { glob = ["target/**", "fuzz/target/**"] }
 
+# prek 組み込みフック (オフラインで動作する Rust ネイティブ実装)
 [[repos]]
 repo = "builtin"
 hooks = [
   { id = "trailing-whitespace" },
   { id = "end-of-file-fixer" },
+  { id = "fix-byte-order-marker" },
   { id = "check-toml" },
   { id = "check-yaml" },
+  { id = "check-json" },
+  { id = "check-merge-conflict" },
+  { id = "check-case-conflict" },
+  { id = "check-illegal-windows-names" },
+  { id = "check-added-large-files" },
+  { id = "detect-private-key" },
+  { id = "mixed-line-ending" },
+  { id = "check-symlinks" },
+  { id = "destroyed-symlinks" },
+  { id = "check-executables-have-shebangs" },
+  # Rust の inner attribute #![...] が shebang と誤判定されるため Rust ファイルは除外する
+  { id = "check-shebang-scripts-are-executable", exclude_types = ["rust"] },
 ]
 
+# tombi: TOML のフォーマッタ・リンタ
+[[repos]]
+repo = "https://github.com/tombi-toml/tombi-pre-commit"
+rev = "v1.2.5"
+hooks = [
+  # Cargo.lock は自動生成ファイルなので tombi の対象外にする
+  { id = "tombi-lint", exclude = { glob = "**/Cargo.lock" } },
+  { id = "tombi-format", exclude = { glob = "**/Cargo.lock" } },
+]
+
+# プロジェクト固有のローカルフック
 [[repos]]
 repo = "local"
 hooks = [
@@ -42,6 +73,7 @@ hooks = [
     types = ["rust"],
     pass_filenames = false,
     require_serial = true,
+    stages = ["pre-push"],
     priority = 20,
   },
 ]

@@ -1,0 +1,65 @@
+# reconfigure の PBT テストを追加する
+
+Created: 2026-05-10
+Completed: 2026-07-21
+Model: DeepSeek v4-pro
+
+
+## 概要
+
+CLAUDE.md に「PBT(Property-Based Testing) や Fuzzing で必ずテストを行う」「unittest は pbt で実現できないものだけを書く」と明記されているが、reconfigure の PBT テストが 0 件である。プロジェクト全体でも `pbt/` ディレクトリが存在しない。
+
+## 根拠
+
+reconfigure の以下の性質は PBT に適している:
+
+1. **ラウンドトリップ不変性**: 任意の `ReconfigureParams` に対して、reconfigure 後にエンコード・デコードが正常に完走すること
+2. **冪等性**: 同じパラメータで複数回 reconfigure を呼んでも結果が変わらないこと
+3. **フレーム数不変性**: reconfigure がエンコード済みフレーム数に影響しないこと
+
+## 修正方針
+
+1. `pbt/` ディレクトリを作成する
+2. proptest を用いた PBT テストを追加する
+3. 最低限以下のテストを含める:
+   - `prop_reconfigure_preserves_roundtrip`: ランダムな `ReconfigureParams` で reconfigure してもエンコード・デコードが完走する
+   - `prop_reconfigure_is_idempotent`: 同じパラメータでの複数回呼び出しが同じ結果を返す
+   - `prop_reconfigure_preserves_frame_count`: reconfigure 前後でデコードフレーム数が変わらない
+
+### proptest 戦略
+
+```rust
+proptest! {
+    #[test]
+    fn prop_reconfigure_preserves_roundtrip(
+        target_bitrate in 1u32..10000,
+        num in 1i32..1000,
+        den in 1i32..1000,
+        reconfigure_at in 1usize..20,
+    ) {
+        // ...
+    }
+}
+```
+
+## 参考
+
+- レビュー指摘: `feature/encoder-reconfigure` ブランチの `/review-diff-code` 結果より（重要指摘 4.1, テスト指摘 7）
+- CLAUDE.md: 「PBT(Property-Based Testing) や Fuzzing で必ずテストを行うこと」
+
+## 振り返り
+
+本 issue は AGENTS.md (CLAUDE.md) の「PBT 必須」「unittest は PBT で実現できないものだけを書く」ルールを根拠として起票された。その後同じブランチ内で当該ルール (および `## テストについて` / `## Rust` 節) が AGENTS.md から削除され、起票根拠が完全に消滅した。
+
+`tests/test_roundtrip.rs` に 0009 で追加された単体テスト 8 本 (midstream / multi_switch / VBR / iter active / state unchanged / forced keyframe / PSNR) が reconfigure の主要なラウンドトリップ性質を網羅しており、現時点では PBT を追加で導入する強い動機はない。
+
+教訓: 規約に依拠した issue は規約変更で前提が消える。規約の根拠そのものを再確認してから起票する。
+
+## 解決方法
+
+`pbt/` クレートを追加し、proptest による reconfigure の PBT を実装した。
+
+- `reconfigure_preserves_frame_count`: 任意の妥当なビットレートで midstream reconfigure しても出力フレーム数が入力と一致すること
+- `reconfigure_same_bitrate_is_safe`: 同一ビットレートでの連続 reconfigure 後もエンコードが完走すること
+
+あわせて `fuzz/` にデコーダー向け cargo-fuzz ターゲットを追加し、shiguredo-rust が求める PBT / Fuzzing 構成を満たした。
