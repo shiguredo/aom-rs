@@ -44,19 +44,6 @@ jobs:
             exit 1
           fi
 
-      - name: Delete existing draft release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ steps.get_version.outputs.VERSION }}
-        run: |
-          # 前回の失敗で残った同名 draft を削除してから作成する。
-          # 同一タグの release は draft を含めて 1 つしか作れないため、
-          # 残骸 draft があると再実行が失敗する。
-          IS_DRAFT=$(gh release view "$VERSION" --json isDraft -q .isDraft 2>/dev/null || echo "false")
-          if [[ "$IS_DRAFT" == "true" ]]; then
-            gh release delete "$VERSION" --yes
-          fi
-
       - name: Create Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -68,10 +55,7 @@ jobs:
               --title "$VERSION" \
               --notes "Release $VERSION"
           else
-            # 正式リリースは draft で作成し、publish ジョブの cargo publish 成功後に
-            # undraft-release ジョブが公開する
             gh release create "$VERSION" \
-              --draft \
               --title "$VERSION" \
               --notes "Release $VERSION"
           fi
@@ -211,22 +195,8 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
 
-  undraft-release:
-    # 正式リリースのみ。canary は prerelease として作成時に公開済みのため対象外
-    if: ${{ !contains(needs.github-release.outputs.version, 'canary') }}
-    needs: [publish, github-release]
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    steps:
-      - name: Undraft GitHub Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ needs.github-release.outputs.version }}
-        run: gh release edit "$VERSION" --draft=false
-
   slack_notify:
-    needs: [github-release, build-prebuilt, build-prebuilt-windows, publish, undraft-release]
+    needs: [github-release, build-prebuilt, build-prebuilt-windows, publish]
     timeout-minutes: 5
     runs-on: ubuntu-slim
     if: ${{ always() }}
