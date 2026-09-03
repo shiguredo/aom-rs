@@ -24,15 +24,15 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup update stable
       - run: sudo apt-get update && sudo apt-get install -y build-essential nasm
-      - uses: shiguredo/github-actions/.github/actions/rust-cache@main
+      - uses: shiguredo/github-actions/.github/actions/rust-cache@091812b41cd7c5f2b5818d4fde613f93bf0c93b1 # main
         with:
           os: ubuntu-24.04
           toolchain: stable
       - run: cargo fmt --all --check
-      - run: cargo clippy --features source-build -- -D warnings
+      - run: cargo clippy --workspace --all-targets --features source-build -- -D warnings
 
   test:
     name: ${{ matrix.os }}
@@ -40,6 +40,8 @@ jobs:
     strategy:
       matrix:
         include:
+          - os: ubuntu-26.04
+          - os: ubuntu-26.04-arm
           - os: ubuntu-24.04
           - os: ubuntu-24.04-arm
           - os: ubuntu-22.04
@@ -49,16 +51,16 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup update stable
       - name: Install build dependencies (Ubuntu)
         if: startsWith(matrix.os, 'ubuntu')
         run: sudo apt-get update && sudo apt-get install -y build-essential nasm
-      - uses: shiguredo/github-actions/.github/actions/rust-cache@main
+      - uses: shiguredo/github-actions/.github/actions/rust-cache@091812b41cd7c5f2b5818d4fde613f93bf0c93b1 # main
         with:
           os: ${{ matrix.os }}
           toolchain: stable
-      - run: cargo test --features source-build
+      - run: cargo test --workspace --features source-build
 
   test-windows:
     name: windows-2025
@@ -66,13 +68,13 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup update stable
       - name: Install NASM
         run: |
           choco install nasm -y
           echo "C:\Program Files\NASM" >> $env:GITHUB_PATH
-      - run: cargo test --features source-build
+      - run: cargo test --workspace --features source-build
 
   # docs.rs 向けビルド確認
   docs-rs:
@@ -82,8 +84,9 @@ jobs:
     env:
       DOCS_RS: 1
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup update stable
+      - run: cargo build
       - run: cargo doc --no-deps
 
   slack_notify:
@@ -94,11 +97,12 @@ jobs:
       - docs-rs
     runs-on: ubuntu-slim
     timeout-minutes: 5
+    if: ${{ always() }}
     permissions:
       actions: read
     steps:
       - name: Slack Notification
-        uses: shiguredo/github-actions/.github/actions/slack-notify@main
+        uses: shiguredo/github-actions/.github/actions/slack-notify@091812b41cd7c5f2b5818d4fde613f93bf0c93b1 # main
         with:
           status: ${{ job.status }}
           slack_webhook: ${{ secrets.SLACK_WEBHOOK }}

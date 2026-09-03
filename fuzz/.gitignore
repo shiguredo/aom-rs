@@ -1,0 +1,2 @@
+# fuzz は独立した workspace のため、バージョン追従は root の Cargo.lock で管理しない
+Cargo.lock

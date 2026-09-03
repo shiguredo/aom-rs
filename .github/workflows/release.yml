@@ -12,29 +12,68 @@ jobs:
   github-release:
     name: "Create GitHub Release"
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     outputs:
       version: ${{ steps.get_version.outputs.VERSION }}
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Get the version
         id: get_version
         run: echo "VERSION=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_OUTPUT
 
+      - name: Check version matches Cargo.toml
+        env:
+          VERSION: ${{ steps.get_version.outputs.VERSION }}
+        run: |
+          # Cargo.toml の [package] セクションの version を読み取る。
+          # package.metadata.external-dependencies.aom にも version があるため、
+          # 1 段目の sed で [package] から次の [ セクションまでを範囲として抽出する。
+          CARGO_VERSION=$(
+            sed -n '/^\[package\]/,/^\[/p' Cargo.toml |
+              sed -n 's/^version *= *"\(.*\)"/\1/p'
+          )
+          if [[ -z "$CARGO_VERSION" ]]; then
+            echo "Failed to read version from Cargo.toml [package] section" >&2
+            exit 1
+          fi
+          if [[ "$VERSION" != "$CARGO_VERSION" ]]; then
+            echo "Tag version ($VERSION) does not match Cargo.toml version ($CARGO_VERSION)" >&2
+            exit 1
+          fi
+
+      - name: Delete existing draft release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.get_version.outputs.VERSION }}
+        run: |
+          # 前回の失敗で残った同名 draft を削除してから作成する。
+          # 同一タグの release は draft を含めて 1 つしか作れないため、
+          # 残骸 draft があると再実行が失敗する。
+          IS_DRAFT=$(gh release view "$VERSION" --json isDraft -q .isDraft 2>/dev/null || echo "false")
+          if [[ "$IS_DRAFT" == "true" ]]; then
+            gh release delete "$VERSION" --yes
+          fi
+
       - name: Create Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.get_version.outputs.VERSION }}
         run: |
-          if ${{ contains(steps.get_version.outputs.VERSION, 'canary') }}; then
-            gh release create ${{ steps.get_version.outputs.VERSION }} \
+          if [[ "$VERSION" == *canary* ]]; then
+            gh release create "$VERSION" \
               --prerelease \
-              --title "${{ steps.get_version.outputs.VERSION }}" \
-              --notes "Release ${{ steps.get_version.outputs.VERSION }}"
+              --title "$VERSION" \
+              --notes "Release $VERSION"
           else
-            gh release create ${{ steps.get_version.outputs.VERSION }} \
-              --title "${{ steps.get_version.outputs.VERSION }}" \
-              --notes "Release ${{ steps.get_version.outputs.VERSION }}"
+            # 正式リリースは draft で作成し、publish ジョブの cargo publish 成功後に
+            # undraft-release ジョブが公開する
+            gh release create "$VERSION" \
+              --draft \
+              --title "$VERSION" \
+              --notes "Release $VERSION"
           fi
 
   build-prebuilt:
@@ -46,6 +85,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - target: ubuntu-26.04_x86_64
+            os: ubuntu-26.04
+            rust_target: x86_64-unknown-linux-gnu
+          - target: ubuntu-26.04_arm64
+            os: ubuntu-26.04-arm
+            rust_target: aarch64-unknown-linux-gnu
           - target: ubuntu-24.04_x86_64
             os: ubuntu-24.04
             rust_target: x86_64-unknown-linux-gnu
@@ -65,7 +110,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install build dependencies (Linux)
         if: runner.os == 'Linux'
@@ -98,10 +143,12 @@ jobs:
       - name: Upload prebuilt archive
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.github-release.outputs.version }}
+          TARGET: ${{ matrix.target }}
         run: |
-          gh release upload ${{ needs.github-release.outputs.version }} \
-            libaom-${{ matrix.target }}.tar.gz \
-            libaom-${{ matrix.target }}.tar.gz.sha256 \
+          gh release upload "$VERSION" \
+            "libaom-${TARGET}.tar.gz" \
+            "libaom-${TARGET}.tar.gz.sha256" \
             --clobber
 
   build-prebuilt-windows:
@@ -113,7 +160,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - run: rustup update stable
 
@@ -143,8 +190,9 @@ jobs:
       - name: Upload prebuilt archive
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.github-release.outputs.version }}
         run: |
-          gh release upload ${{ needs.github-release.outputs.version }} `
+          gh release upload "$env:VERSION" `
             libaom-windows_x86_64.tar.gz `
             libaom-windows_x86_64.tar.gz.sha256 `
             --clobber
@@ -156,25 +204,41 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: actions/checkout@v6
-      - uses: rust-lang/crates-io-auth-action@v1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5
         id: auth
       - run: cargo publish
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
 
+  undraft-release:
+    # 正式リリースのみ。canary は prerelease として作成時に公開済みのため対象外
+    if: ${{ !contains(needs.github-release.outputs.version, 'canary') }}
+    needs: [publish, github-release]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Undraft GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.github-release.outputs.version }}
+        run: gh release edit "$VERSION" --draft=false
+
   slack_notify:
-    needs: [github-release, build-prebuilt, build-prebuilt-windows, publish]
-    timeout-minutes: 20
+    needs: [github-release, build-prebuilt, build-prebuilt-windows, publish, undraft-release]
+    timeout-minutes: 5
     runs-on: ubuntu-slim
     if: ${{ always() }}
     permissions:
       actions: read
     steps:
       - name: Slack Notification
-        uses: shiguredo/github-actions/.github/actions/slack-notify@main
+        uses: shiguredo/github-actions/.github/actions/slack-notify@091812b41cd7c5f2b5818d4fde613f93bf0c93b1 # main
         with:
           status: ${{ job.status }}
           slack_webhook: ${{ secrets.SLACK_WEBHOOK }}
           slack_channel: rust-oss
           notify_mode: failure_and_fixed
+        env:
+          GH_TOKEN: ${{ github.token }}

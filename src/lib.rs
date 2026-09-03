@@ -149,6 +149,7 @@ impl Default for DecoderConfig {
 pub struct Decoder {
     ctx: sys::aom_codec_ctx,
     iter: sys::aom_codec_iter_t,
+    finished: bool,
 }
 
 impl Decoder {
@@ -193,7 +194,7 @@ impl Decoder {
                 ctx.as_mut_ptr(),
                 iface,
                 cfg_ptr,
-                0, // flags
+                0, // フラグなし
                 sys::AOM_DECODER_ABI_VERSION as i32,
             );
             // 初期化失敗時は ctx が未初期化なので参照してはいけない
@@ -203,6 +204,7 @@ impl Decoder {
             Ok(Self {
                 ctx,
                 iter: std::ptr::null(),
+                finished: false,
             })
         }
     }
@@ -211,6 +213,13 @@ impl Decoder {
     ///
     /// デコード結果は [`Decoder::next_frame()`] で取得できる
     pub fn decode(&mut self, data: &[u8]) -> Result<(), Error> {
+        if self.finished {
+            return Err(Error::with_reason(
+                sys::aom_codec_err_t_AOM_CODEC_ERROR,
+                "shiguredo_aom::Decoder::decode",
+                "decoder already finished",
+            ));
+        }
         if !self.iter.is_null() {
             return Err(Error::with_reason(
                 sys::aom_codec_err_t_AOM_CODEC_ERROR,
@@ -224,7 +233,7 @@ impl Decoder {
                 &mut self.ctx,
                 data.as_ptr(),
                 data.len(),
-                std::ptr::null_mut(), // user_priv
+                std::ptr::null_mut(), // ユーザープライベートデータなし
             )
         };
         Error::check(code, "aom_codec_decode", Some(&self.ctx))?;
@@ -235,6 +244,13 @@ impl Decoder {
     ///
     /// 残りのデコード結果は [`Decoder::next_frame()`] で取得できる
     pub fn finish(&mut self) -> Result<(), Error> {
+        if self.finished {
+            return Err(Error::with_reason(
+                sys::aom_codec_err_t_AOM_CODEC_ERROR,
+                "shiguredo_aom::Decoder::finish",
+                "decoder already finished",
+            ));
+        }
         if !self.iter.is_null() {
             return Err(Error::with_reason(
                 sys::aom_codec_err_t_AOM_CODEC_ERROR,
@@ -247,6 +263,7 @@ impl Decoder {
             sys::aom_codec_decode(&mut self.ctx, std::ptr::null_mut(), 0, std::ptr::null_mut())
         };
         Error::check(code, "aom_codec_decode", Some(&self.ctx))?;
+        self.finished = true;
         Ok(())
     }
 
@@ -269,8 +286,13 @@ impl Decoder {
 }
 
 // 安全性: aom_codec_ctx はスレッド間で移動しても安全である。
-// libaom の内部状態はスレッドローカルな資源に依存せず、
-// コンテキストへの排他的アクセスがあれば（&mut self で保証される）問題ない。
+// !Send の原因は ctx 内の raw pointer 群（priv_, iface 等）だが、
+// これらが指すメモリはヒープ確保または静的データでありスレッドアフィニティを持たない。
+// libaom の内部スレッド（CONFIG_MULTITHREAD=1 時のワーカースレッド）は
+// プロセス全体で有効な同期プリミティブで通信しており、移動後も正しく動作する。
+// &mut self による排他アクセスが libaom の要求する排他性と一致する。
+// Sync は意図的に実装しない: libaom の API はコンテキストへの排他アクセスを要求し、
+// &Decoder の共有は内部状態のデータレースを引き起こす。
 unsafe impl Send for Decoder {}
 
 impl Drop for Decoder {
@@ -319,8 +341,8 @@ impl DecodedFrame<'_> {
     // libaom での高ビット深度フォーマットについてのメモ：
     // - libaom は AV1 の 10-bit プロファイル（Profile 0 の 10-bit など）をサポート
     // - 高ビット深度データは 16-bit リトルエンディアン形式で格納される
-    // - 実際の値範囲は 10-bit (0-1023) だが、上位6ビットは未使用
-    // - ストライドは 16-bit 単位（バイト数は width * 2）で計算される
+    // - 実際の値範囲は 10-bit (0-1023) だが、上位 6 ビットは未使用
+    // - ストライドはバイト単位で計算される（16-bit なら 1 ピクセル 2 バイト）
     pub fn is_high_depth(&self) -> bool {
         matches!(
             self.0.fmt,
@@ -552,6 +574,7 @@ impl ImageData<'_> {
 }
 
 /// 各プレーンの期待サイズ
+#[derive(Debug, Clone, Copy)]
 enum PlaneSizes {
     /// 3 プレーン (I420, YV12, I422, I444, I42016, I42216, I44416)
     ThreePlanes {
@@ -596,23 +619,47 @@ pub enum RateControlMode {
 /// キーフレーム配置モード (kf_mode)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeyframeMode {
-    /// 固定間隔
+    /// エンコーダー側のキーフレーム自動配置を停止する
+    ///
+    /// 自動キーフレーム挿入 (シーンチェンジ検出 / `kf_max_dist` ベースの周期挿入) が
+    /// 完全に止まる。追加のキーフレームは [`EncodeOptions::force_keyframe`] が `true` の
+    /// フレームでのみ挿入される。
+    ///
+    /// ただし AV1 ビットストリーム仕様により、シーケンス先頭のフレームは常に
+    /// キーフレームとなる。
+    ///
+    /// 副作用: [`EncoderConfig::kf_max_dist`] に `Some(0)` を併用すると、libaom 内部で
+    /// `enable_keyframe_filtering` が 0 に強制上書きされる。
+    Disabled,
+
+    /// `AOM_KF_FIXED` (libaom の deprecated エイリアス、`Disabled` と同一挙動)
+    #[deprecated(
+        note = "AOM_KF_FIXED is a deprecated alias of AOM_KF_DISABLED in libaom; use KeyframeMode::Disabled"
+    )]
     Fixed,
-    /// 自動配置
+
+    /// エンコーダーが最適配置を自動決定する
+    ///
+    /// libaom の `AOM_KF_AUTO` に対応する。`kf_min_dist` と `kf_max_dist` の範囲内で
+    /// シーンチェンジ検出と周期挿入により自動配置される。
+    ///
+    /// 注意: libaom は `kf_min_dist == kf_max_dist` のとき内部的に `auto_key` を 0 に
+    /// 倒すため、本 variant を指定していても自動キーフレーム配置が無効化される。
+    /// また、[`Usage::AllIntra`] では libaom の既定が `AOM_KF_DISABLED` であり、
+    /// `Auto` を併用すると AllIntra (= 全 I フレーム) の意味と矛盾する組み合わせになる。
     Auto,
 }
 
-/// マルチパスエンコーディングモード (g_pass)
+/// エンコーディングモード (g_pass)
+///
+/// シングルパスのみ対応している。マルチパスエンコード (FirstPass /
+/// SecondPass / ThirdPass) は対応していない。
+///
+/// 将来マルチパスを追加する際の拡張点として variant を 1 つだけ残している。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EncodingPass {
     /// シングルパス
     OnePass,
-    /// 1 パス目
-    FirstPass,
-    /// 2 パス目
-    SecondPass,
-    /// 3 パス目
-    ThirdPass,
 }
 
 /// タイムベース (aom_rational)
@@ -858,7 +905,10 @@ pub struct EncoderConfig {
     /// エラー耐性モード
     pub g_error_resilient: bool,
 
-    /// マルチパスエンコーディングモード
+    /// エンコーディングモード (シングルパスのみ対応)
+    ///
+    /// `None` の場合は libaom のデフォルト (AOM_RC_ONE_PASS) が使われる。
+    /// 現状は `Some(EncodingPass::OnePass)` と同一の挙動になる。
     pub g_pass: Option<EncodingPass>,
 
     /// 先読みフレーム数 (0 で無効)
@@ -1120,6 +1170,57 @@ pub struct EncoderConfig {
 
     /// AV1E_SET_MAX_REFERENCE_FRAMES: 最大参照フレーム数
     pub max_reference_frames: Option<u32>,
+
+    // --- realtime 配信向け sequence-level 機能フラグ ---
+    //
+    // 以下 3 フィールドは AV1 ビットストリームの sequence header に書き込まれる機能フラグ。
+    // shiguredo_aom がリンクする libaom (通常ビルド) のデフォルトは GoodQuality 寄り
+    // (`= 1`) で、`Usage::Realtime` を選んでも本フィールドのデフォルトは変わらない。
+    // realtime 配信用途では明示的に `Some(false)` を指定して機能を絞り、RD 探索コストと
+    // ビットストリーム複雑度を抑えるのが定型。
+    /// AV1E_SET_ENABLE_ORDER_HINT: frame order hint 有効化
+    pub enable_order_hint: Option<bool>,
+
+    /// AV1E_SET_ENABLE_REF_FRAME_MVS: ref frame mvs (mfmv) 有効化
+    ///
+    /// [`Self::enable_order_hint`] を `Some(false)` に指定した場合、libaom 内部で
+    /// `tool_cfg->ref_frame_mvs_present` が `enable_ref_frame_mvs & enable_order_hint` の
+    /// 積として計算される (libaom `av1/av1_cx_iface.c`)。そのため `enable_ref_frame_mvs`
+    /// に `Some(true)` を渡しても mfmv は silent に無効化される (libaom はエラーを
+    /// 返さない)。
+    pub enable_ref_frame_mvs: Option<bool>,
+
+    /// AV1E_SET_ENABLE_ANGLE_DELTA: intra 角度予測 delta 有効化
+    pub enable_angle_delta: Option<bool>,
+
+    // --- realtime 配信向け TX search 削減 ---
+    /// AV1E_SET_INTRA_DEFAULT_TX_ONLY: intra で default TX type のみ使う
+    ///
+    /// `Some(true)` で TX search を削減する方向の制御。realtime 配信用途では `Some(true)` を
+    /// 指定するのが定型。libaom 通常ビルドのデフォルトは `0` (= TX search を行う)。
+    pub intra_default_tx_only: Option<bool>,
+
+    // --- realtime 配信向け RD コスト更新頻度 ---
+    //
+    // 以下 3 フィールドは libaom 内部の探索コスト更新頻度を指定する。有効値は `0..=3`:
+    //
+    // - `0` = `COST_UPD_SB`: SB ごとに更新 (デフォルト、最も重い)
+    // - `1` = `COST_UPD_SBROW`: SB row ごとに更新
+    // - `2` = `COST_UPD_TILE`: tile ごとに更新
+    // - `3` = `COST_UPD_OFF`: 更新しない (最も軽い)
+    //
+    // shiguredo_aom がリンクする libaom (通常ビルド) のデフォルトは `COST_UPD_SB` (= 0)
+    // で、`Usage::Realtime` を選んでも本フィールドのデフォルトは変わらない。realtime
+    // 配信用途では明示的に `Some(3)` (= OFF) を指定して per-frame の RD コスト再計算を
+    // 省くのが定型。値域外を渡した場合は libaom 側で `Encoder::new` がエラーを返す。
+    /// AV1E_SET_COEFF_COST_UPD_FREQ: 係数コスト更新頻度
+    pub coeff_cost_upd_freq: Option<u32>,
+
+    /// AV1E_SET_MODE_COST_UPD_FREQ: モードコスト更新頻度
+    pub mode_cost_upd_freq: Option<u32>,
+
+    /// AV1E_SET_MV_COST_UPD_FREQ: MV コスト更新頻度
+    pub mv_cost_upd_freq: Option<u32>,
 }
 
 impl EncoderConfig {
@@ -1232,6 +1333,13 @@ impl EncoderConfig {
             enable_superres: None,
             gf_max_pyramid_height: None,
             max_reference_frames: None,
+            enable_order_hint: None,
+            enable_ref_frame_mvs: None,
+            enable_angle_delta: None,
+            intra_default_tx_only: None,
+            coeff_cost_upd_freq: None,
+            mode_cost_upd_freq: None,
+            mv_cost_upd_freq: None,
         }
     }
 }
@@ -1243,6 +1351,15 @@ pub struct EncodeOptions {
     pub force_keyframe: bool,
 }
 
+/// エンコーダー再構成パラメータ
+///
+/// [`Encoder::reconfigure()`] でランタイムに変更可能なフィールドを保持する。
+#[derive(Debug, Clone, Default)]
+pub struct ReconfigureParams {
+    /// ターゲットビットレート (kbps 単位, libaom: `rc_target_bitrate`)
+    pub rc_target_bitrate: Option<u32>,
+}
+
 // ============================================================================
 // エンコーダー
 // ============================================================================
@@ -1250,11 +1367,80 @@ pub struct EncodeOptions {
 /// AV1 エンコーダー
 pub struct Encoder {
     ctx: sys::aom_codec_ctx,
+    /// 直近の `aom_codec_enc_cfg` のミラー (control 系は含まない)
+    cfg: sys::aom_codec_enc_cfg,
     img: sys::aom_image,
     iter: sys::aom_codec_iter_t,
     frame_count: usize,
     image_format: ImageFormat,
     plane_sizes: PlaneSizes,
+    finished: bool,
+}
+
+// AOM_KF_FIXED は libaom 上で AOM_KF_DISABLED の deprecated alias (両者とも整数値 0)
+// であるため、Disabled と Fixed の arm が同一値にマップされることは仕様。
+#[expect(deprecated)]
+fn map_kf_mode(mode: KeyframeMode) -> sys::aom_kf_mode {
+    match mode {
+        KeyframeMode::Disabled => sys::aom_kf_mode_AOM_KF_DISABLED,
+        KeyframeMode::Fixed => sys::aom_kf_mode_AOM_KF_FIXED,
+        KeyframeMode::Auto => sys::aom_kf_mode_AOM_KF_AUTO,
+    }
+}
+
+/// 画像フォーマット × g_profile × ビット深度の整合を事前検証する
+///
+/// libaom はこの検証を encode 時に行うため、aom-rs 側で事前に検証して
+/// 「init 成功 → 遅延失敗」を防ぐ。libaom の検証条件 (av1/av1_cx_iface.c の
+/// validate_img / av1/encoder/encoder.c の av1_receive_raw_frame) に合わせる。
+///
+/// 有効ビット深度は 16-bit フォーマット (I42016 / I42216 / I44416) では
+/// `g_bit_depth` (None なら 8)、8-bit フォーマットでは常に 8 とする。
+///
+/// 検証対象外の組み合わせ (libaom が init 時に拒否する):
+/// - 8-bit フォーマット + g_bit_depth > 8 (aom/src/aom_encoder.c の aom_codec_enc_init_ver)
+/// - 12-bit + profile < 2 (av1/av1_cx_iface.c の validate_config)
+/// - profile 1 + monochrome (av1/av1_cx_iface.c の validate_config)
+fn validate_image_format_profile(config: &EncoderConfig) -> Result<(), Error> {
+    // 8-bit フォーマットは g_bit_depth の指定を判定に使わない
+    let effective_bit_depth = match config.image_format {
+        ImageFormat::I42016 | ImageFormat::I42216 | ImageFormat::I44416 => {
+            config.g_bit_depth.unwrap_or(8)
+        }
+        _ => 8,
+    };
+
+    // 12-bit は profile < 2 を libaom が init 時に拒否するため事前検証の対象外
+    if effective_bit_depth == 12 {
+        return Ok(());
+    }
+
+    // 有効ビット深度 8-10 の組み合わせを検証する。
+    //
+    // 有効な組み合わせ (libaom の validate_img / av1_receive_raw_frame と
+    // AV1 仕様の profile 定義による):
+    // - 4:2:0 系 (I420 / Yv12 / Nv12 / I42016) は profile 0
+    // - 4:2:2 系 (I422 / I42216) は profile 2
+    // - 4:4:4 系 (I444 / I44416) は profile 1 (monochrome なら profile 0 も許可)
+    let monochrome = config.monochrome.unwrap_or(false);
+    let profile_allowed = match config.image_format {
+        ImageFormat::I420 | ImageFormat::Yv12 | ImageFormat::Nv12 | ImageFormat::I42016 => {
+            config.g_profile == 0
+        }
+        ImageFormat::I422 | ImageFormat::I42216 => config.g_profile == 2,
+        ImageFormat::I444 | ImageFormat::I44416 => {
+            config.g_profile == 1 || (monochrome && config.g_profile == 0)
+        }
+    };
+
+    if !profile_allowed {
+        return Err(Error::with_reason(
+            sys::aom_codec_err_t_AOM_CODEC_INVALID_PARAM,
+            "shiguredo_aom::Encoder::init",
+            "invalid image format / g_profile combination",
+        ));
+    }
+    Ok(())
 }
 
 impl Encoder {
@@ -1283,6 +1469,8 @@ impl Encoder {
         mut aom_config: sys::aom_codec_enc_cfg,
         iface: *const sys::aom_codec_iface,
     ) -> Result<Self, Error> {
+        validate_image_format_profile(config)?;
+
         // --- aom_codec_enc_cfg_t フィールドの設定 ---
 
         // 基本設定
@@ -1320,12 +1508,10 @@ impl Encoder {
             aom_config.g_input_bit_depth = input_bit_depth as _;
         }
 
+        // 将来マルチパス variant を追加する際の拡張点として、OnePass のみのマッピングを残す
         if let Some(pass) = config.g_pass {
             aom_config.g_pass = match pass {
                 EncodingPass::OnePass => sys::aom_enc_pass_AOM_RC_ONE_PASS,
-                EncodingPass::FirstPass => sys::aom_enc_pass_AOM_RC_FIRST_PASS,
-                EncodingPass::SecondPass => sys::aom_enc_pass_AOM_RC_SECOND_PASS,
-                EncodingPass::ThirdPass => sys::aom_enc_pass_AOM_RC_THIRD_PASS,
             };
         }
 
@@ -1401,10 +1587,7 @@ impl Encoder {
             aom_config.fwd_kf_enabled = if enabled { 1 } else { 0 };
         }
         if let Some(mode) = config.kf_mode {
-            aom_config.kf_mode = match mode {
-                KeyframeMode::Fixed => sys::aom_kf_mode_AOM_KF_FIXED,
-                KeyframeMode::Auto => sys::aom_kf_mode_AOM_KF_AUTO,
-            };
+            aom_config.kf_mode = map_kf_mode(mode);
         }
         if let Some(v) = config.kf_min_dist {
             aom_config.kf_min_dist = v as _;
@@ -1460,13 +1643,32 @@ impl Encoder {
             aom_config.use_fixed_qp_offsets = if v { 1 } else { 0 };
         }
 
+        // 16-bit フォーマット (I42016 / I42216 / I44416) を指定した場合のみ
+        // AOM_CODEC_USE_HIGHBITDEPTH を init フラグに付与する。
+        //
+        // libaom は aom_codec_encode 時に画像フォーマットの HIGHBITDEPTH ビットと
+        // init フラグの一致を要求する (aom/src/aom_encoder.c の aom_codec_encode)。
+        // 8-bit フォーマットのままフラグを立てると init は成功するが encode が
+        // 毎回 AOM_CODEC_INVALID_PARAM で失敗するため、必ず条件付きで立てる。
+        // g_bit_depth > 8 を 8-bit フォーマットと併用した場合はフラグを立てず、
+        // libaom の init 時検証 (aom/src/aom_encoder.c の aom_codec_enc_init_ver)
+        // にエラーを委ねる。
+        let init_flags: sys::aom_codec_flags_t = if matches!(
+            config.image_format,
+            ImageFormat::I42016 | ImageFormat::I42216 | ImageFormat::I44416
+        ) {
+            sys::AOM_CODEC_USE_HIGHBITDEPTH as sys::aom_codec_flags_t
+        } else {
+            0
+        };
+
         let mut ctx = MaybeUninit::<sys::aom_codec_ctx>::zeroed();
         unsafe {
             let code = sys::aom_codec_enc_init_ver(
                 ctx.as_mut_ptr(),
                 iface,
                 &aom_config,
-                0, // flags
+                init_flags,
                 sys::AOM_ENCODER_ABI_VERSION as i32,
             );
             Error::check(code, "aom_codec_enc_init_ver", None)?;
@@ -1491,6 +1693,9 @@ impl Encoder {
                 1, // align に 1 を指定することで width == y_stride となることが保証される
             );
             if img_ptr.is_null() {
+                // aom_codec_enc_init_ver は成功しているため ctx は初期化済み。
+                // Self が構築される前なので Drop による解放が機能せず、手動で解放する。
+                sys::aom_codec_destroy(&mut ctx.assume_init());
                 return Err(Error::with_reason(
                     sys::aom_codec_err_t_AOM_CODEC_MEM_ERROR,
                     "aom_img_alloc",
@@ -1498,60 +1703,186 @@ impl Encoder {
                 ));
             }
 
-            let img = img.assume_init();
+            let mut img = img.assume_init();
+
+            // aom_img_alloc 成功後の防御的検証
+            //
+            // DecodedFrame::plane と同等の null チェック・stride 正値チェックを行う。
+            // aom_img_alloc の成功は null でないことを強く示唆するが、
+            // unsafe コードの健全性は保証でなければならない。
+            let plane_count = match config.image_format {
+                ImageFormat::Nv12 => 2,
+                _ => 3,
+            };
+            for i in 0..plane_count {
+                if img.planes[i].is_null() {
+                    sys::aom_img_free(&mut img);
+                    sys::aom_codec_destroy(&mut ctx.assume_init());
+                    return Err(Error::with_reason(
+                        sys::aom_codec_err_t_AOM_CODEC_MEM_ERROR,
+                        "aom_img_alloc",
+                        "allocated image has null plane pointer",
+                    ));
+                }
+                if img.stride[i] <= 0 {
+                    sys::aom_img_free(&mut img);
+                    sys::aom_codec_destroy(&mut ctx.assume_init());
+                    return Err(Error::with_reason(
+                        sys::aom_codec_err_t_AOM_CODEC_ERROR,
+                        "aom_img_alloc",
+                        "allocated image has non-positive stride",
+                    ));
+                }
+            }
+
+            // プレーンサイズの計算（オーバーフロー検証付き）
+            //
+            // DecodedFrame::plane と同等の checked_mul + isize::MAX チェックを行う。
+            // release モードでオーバーフローするとラップし、encode() のサイズ検証を
+            // 偶然通過した際に from_raw_parts_mut でデータ破壊に至るため。
             let height = config.g_h as usize;
+            let checked_plane_size = |h: usize, stride: i32| -> Result<usize, Error> {
+                let stride = stride as usize;
+                let size = h.checked_mul(stride).ok_or_else(|| {
+                    Error::with_reason(
+                        sys::aom_codec_err_t_AOM_CODEC_MEM_ERROR,
+                        "shiguredo_aom::Encoder::init",
+                        "plane size overflow: height * stride exceeds usize",
+                    )
+                })?;
+                if size > isize::MAX as usize {
+                    return Err(Error::with_reason(
+                        sys::aom_codec_err_t_AOM_CODEC_MEM_ERROR,
+                        "shiguredo_aom::Encoder::init",
+                        "plane size exceeds isize::MAX",
+                    ));
+                }
+                Ok(size)
+            };
             let plane_sizes = match config.image_format {
                 ImageFormat::Nv12 => PlaneSizes::TwoPlanes {
-                    y_size: height * img.stride[0] as usize,
-                    uv_size: height.div_ceil(2) * img.stride[1] as usize,
+                    y_size: checked_plane_size(height, img.stride[0]).inspect_err(|_| {
+                        sys::aom_img_free(&mut img);
+                        sys::aom_codec_destroy(&mut ctx.assume_init());
+                    })?,
+                    uv_size: checked_plane_size(height.div_ceil(2), img.stride[1]).inspect_err(
+                        |_| {
+                            sys::aom_img_free(&mut img);
+                            sys::aom_codec_destroy(&mut ctx.assume_init());
+                        },
+                    )?,
                 },
                 // 4:2:0 系 (U/V は幅・高さともに半分)
                 ImageFormat::I420 | ImageFormat::Yv12 => PlaneSizes::ThreePlanes {
-                    y_size: height * img.stride[0] as usize,
-                    u_size: height.div_ceil(2) * img.stride[1] as usize,
-                    v_size: height.div_ceil(2) * img.stride[2] as usize,
+                    y_size: checked_plane_size(height, img.stride[0]).inspect_err(|_| {
+                        sys::aom_img_free(&mut img);
+                        sys::aom_codec_destroy(&mut ctx.assume_init());
+                    })?,
+                    u_size: checked_plane_size(height.div_ceil(2), img.stride[1]).inspect_err(
+                        |_| {
+                            sys::aom_img_free(&mut img);
+                            sys::aom_codec_destroy(&mut ctx.assume_init());
+                        },
+                    )?,
+                    v_size: checked_plane_size(height.div_ceil(2), img.stride[2]).inspect_err(
+                        |_| {
+                            sys::aom_img_free(&mut img);
+                            sys::aom_codec_destroy(&mut ctx.assume_init());
+                        },
+                    )?,
                 },
                 // 4:2:2 系 (U/V は幅が半分、高さは同じ)
                 ImageFormat::I422 => PlaneSizes::ThreePlanes {
-                    y_size: height * img.stride[0] as usize,
-                    u_size: height * img.stride[1] as usize,
-                    v_size: height * img.stride[2] as usize,
+                    y_size: checked_plane_size(height, img.stride[0]).inspect_err(|_| {
+                        sys::aom_img_free(&mut img);
+                        sys::aom_codec_destroy(&mut ctx.assume_init());
+                    })?,
+                    u_size: checked_plane_size(height, img.stride[1]).inspect_err(|_| {
+                        sys::aom_img_free(&mut img);
+                        sys::aom_codec_destroy(&mut ctx.assume_init());
+                    })?,
+                    v_size: checked_plane_size(height, img.stride[2]).inspect_err(|_| {
+                        sys::aom_img_free(&mut img);
+                        sys::aom_codec_destroy(&mut ctx.assume_init());
+                    })?,
                 },
                 // 4:4:4 系 (U/V は Y と同サイズ)
                 ImageFormat::I444 => PlaneSizes::ThreePlanes {
-                    y_size: height * img.stride[0] as usize,
-                    u_size: height * img.stride[1] as usize,
-                    v_size: height * img.stride[2] as usize,
+                    y_size: checked_plane_size(height, img.stride[0]).inspect_err(|_| {
+                        sys::aom_img_free(&mut img);
+                        sys::aom_codec_destroy(&mut ctx.assume_init());
+                    })?,
+                    u_size: checked_plane_size(height, img.stride[1]).inspect_err(|_| {
+                        sys::aom_img_free(&mut img);
+                        sys::aom_codec_destroy(&mut ctx.assume_init());
+                    })?,
+                    v_size: checked_plane_size(height, img.stride[2]).inspect_err(|_| {
+                        sys::aom_img_free(&mut img);
+                        sys::aom_codec_destroy(&mut ctx.assume_init());
+                    })?,
                 },
                 // 16-bit 4:2:0 系
                 ImageFormat::I42016 => PlaneSizes::ThreePlanes {
-                    y_size: height * img.stride[0] as usize,
-                    u_size: height.div_ceil(2) * img.stride[1] as usize,
-                    v_size: height.div_ceil(2) * img.stride[2] as usize,
+                    y_size: checked_plane_size(height, img.stride[0]).inspect_err(|_| {
+                        sys::aom_img_free(&mut img);
+                        sys::aom_codec_destroy(&mut ctx.assume_init());
+                    })?,
+                    u_size: checked_plane_size(height.div_ceil(2), img.stride[1]).inspect_err(
+                        |_| {
+                            sys::aom_img_free(&mut img);
+                            sys::aom_codec_destroy(&mut ctx.assume_init());
+                        },
+                    )?,
+                    v_size: checked_plane_size(height.div_ceil(2), img.stride[2]).inspect_err(
+                        |_| {
+                            sys::aom_img_free(&mut img);
+                            sys::aom_codec_destroy(&mut ctx.assume_init());
+                        },
+                    )?,
                 },
                 // 16-bit 4:2:2 系
                 ImageFormat::I42216 => PlaneSizes::ThreePlanes {
-                    y_size: height * img.stride[0] as usize,
-                    u_size: height * img.stride[1] as usize,
-                    v_size: height * img.stride[2] as usize,
+                    y_size: checked_plane_size(height, img.stride[0]).inspect_err(|_| {
+                        sys::aom_img_free(&mut img);
+                        sys::aom_codec_destroy(&mut ctx.assume_init());
+                    })?,
+                    u_size: checked_plane_size(height, img.stride[1]).inspect_err(|_| {
+                        sys::aom_img_free(&mut img);
+                        sys::aom_codec_destroy(&mut ctx.assume_init());
+                    })?,
+                    v_size: checked_plane_size(height, img.stride[2]).inspect_err(|_| {
+                        sys::aom_img_free(&mut img);
+                        sys::aom_codec_destroy(&mut ctx.assume_init());
+                    })?,
                 },
                 // 16-bit 4:4:4 系
                 ImageFormat::I44416 => PlaneSizes::ThreePlanes {
-                    y_size: height * img.stride[0] as usize,
-                    u_size: height * img.stride[1] as usize,
-                    v_size: height * img.stride[2] as usize,
+                    y_size: checked_plane_size(height, img.stride[0]).inspect_err(|_| {
+                        sys::aom_img_free(&mut img);
+                        sys::aom_codec_destroy(&mut ctx.assume_init());
+                    })?,
+                    u_size: checked_plane_size(height, img.stride[1]).inspect_err(|_| {
+                        sys::aom_img_free(&mut img);
+                        sys::aom_codec_destroy(&mut ctx.assume_init());
+                    })?,
+                    v_size: checked_plane_size(height, img.stride[2]).inspect_err(|_| {
+                        sys::aom_img_free(&mut img);
+                        sys::aom_codec_destroy(&mut ctx.assume_init());
+                    })?,
                 },
             };
 
             let mut this = Self {
                 ctx: ctx.assume_init(),
+                cfg: aom_config,
                 img,
                 iter: std::ptr::null(),
                 frame_count: 0,
                 image_format: config.image_format,
                 plane_sizes,
+                finished: false,
             };
-            // NOTE: これ以降の操作に失敗しても ctx は Drop によって確実に解放される
+            // 注意: これ以降の操作に失敗しても ctx は Drop によって確実に解放される
 
             // --- エンコーダー制御パラメータの設定 ---
             this.apply_controls(config)?;
@@ -1939,6 +2270,62 @@ impl Encoder {
             )?;
         }
 
+        // AV1E_SET_ENABLE_ORDER_HINT
+        if let Some(v) = config.enable_order_hint {
+            self.set_control(
+                sys::aome_enc_control_id_AV1E_SET_ENABLE_ORDER_HINT as c_int,
+                if v { 1 } else { 0 },
+            )?;
+        }
+
+        // AV1E_SET_ENABLE_REF_FRAME_MVS
+        if let Some(v) = config.enable_ref_frame_mvs {
+            self.set_control(
+                sys::aome_enc_control_id_AV1E_SET_ENABLE_REF_FRAME_MVS as c_int,
+                if v { 1 } else { 0 },
+            )?;
+        }
+
+        // AV1E_SET_ENABLE_ANGLE_DELTA
+        if let Some(v) = config.enable_angle_delta {
+            self.set_control(
+                sys::aome_enc_control_id_AV1E_SET_ENABLE_ANGLE_DELTA as c_int,
+                if v { 1 } else { 0 },
+            )?;
+        }
+
+        // AV1E_SET_INTRA_DEFAULT_TX_ONLY
+        if let Some(v) = config.intra_default_tx_only {
+            self.set_control(
+                sys::aome_enc_control_id_AV1E_SET_INTRA_DEFAULT_TX_ONLY as c_int,
+                if v { 1 } else { 0 },
+            )?;
+        }
+
+        // AV1E_SET_COEFF_COST_UPD_FREQ
+        if let Some(v) = config.coeff_cost_upd_freq {
+            self.set_control(
+                sys::aome_enc_control_id_AV1E_SET_COEFF_COST_UPD_FREQ as c_int,
+                v as c_int,
+            )?;
+        }
+
+        // AV1E_SET_MODE_COST_UPD_FREQ
+        if let Some(v) = config.mode_cost_upd_freq {
+            self.set_control(
+                sys::aome_enc_control_id_AV1E_SET_MODE_COST_UPD_FREQ as c_int,
+                v as c_int,
+            )?;
+        }
+
+        // AV1E_SET_MV_COST_UPD_FREQ
+        if let Some(v) = config.mv_cost_upd_freq {
+            self.set_control(
+                sys::aome_enc_control_id_AV1E_SET_MV_COST_UPD_FREQ as c_int,
+                v as c_int,
+            )?;
+        }
+
         Ok(())
     }
 
@@ -1948,19 +2335,50 @@ impl Encoder {
         Error::check(code, "aom_codec_control", Some(&self.ctx))
     }
 
+    /// エンコーダーの設定をランタイムに変更する
+    ///
+    /// `params` で `Some` が指定されたフィールドのみを書き換え、libaom の
+    /// `aom_codec_enc_config_set()` を呼び出して反映する。control 系設定
+    /// (`AOME_SET_CPUUSED` 等) は libaom 内部状態に保持され、本メソッドの
+    /// 影響を受けない。
+    ///
+    /// 本メソッドで変更可能なのは [`ReconfigureParams`] のフィールドだけ。
+    /// sequence-level 機能フラグ ([`EncoderConfig::enable_order_hint`] /
+    /// [`EncoderConfig::enable_ref_frame_mvs`] 等)、RD コスト更新頻度
+    /// ([`EncoderConfig::coeff_cost_upd_freq`] 等)、キーフレーム配置モード
+    /// ([`EncoderConfig::kf_mode`])、その他 control 系設定は midstream で変更すると
+    /// ビットストリーム互換が壊れるため、本メソッドからは変更できない。これらを
+    /// 変更したい場合は [`Encoder`] を破棄して新しいインスタンスを生成する必要がある。
+    ///
+    /// # Errors
+    ///
+    /// - [`Encoder::next_frame()`] の取り出しが完了していない状態で呼ぶとエラーを返す
+    /// - libaom の `aom_codec_enc_config_set()` が失敗した場合はそのコードを返し、
+    ///   内部の設定は変更前の値のまま保たれる
+    pub fn reconfigure(&mut self, params: ReconfigureParams) -> Result<(), Error> {
+        self.check_iter_drained("shiguredo_aom::Encoder::reconfigure")?;
+
+        let mut cfg = self.cfg;
+
+        if let Some(v) = params.rc_target_bitrate {
+            cfg.rc_target_bitrate = v as c_uint;
+        }
+
+        let code = unsafe { sys::aom_codec_enc_config_set(&mut self.ctx, &cfg) };
+        Error::check(code, "aom_codec_enc_config_set", Some(&self.ctx))?;
+
+        // aom_codec_enc_config_set が成功した場合のみ self.cfg を更新する
+        self.cfg = cfg;
+        Ok(())
+    }
+
     /// 画像データをエンコードする
     ///
     /// エンコード結果は [`Encoder::next_frame()`] で取得できる
     ///
     /// `image` のフォーマットはエンコーダー初期化時に指定した `ImageFormat` と一致する必要がある
     pub fn encode(&mut self, image: &ImageData<'_>, options: &EncodeOptions) -> Result<(), Error> {
-        if !self.iter.is_null() {
-            return Err(Error::with_reason(
-                sys::aom_codec_err_t_AOM_CODEC_ERROR,
-                "shiguredo_aom::Encoder::encode",
-                "still need to call shiguredo_aom::Encoder::next_frame()",
-            ));
-        }
+        self.check_iter_drained("shiguredo_aom::Encoder::encode")?;
 
         // フォーマット整合性チェック
         if image.format() != self.image_format {
@@ -2023,7 +2441,6 @@ impl Encoder {
             // 画像データをバッファにコピー
             match image {
                 ImageData::I420 { y, u, v }
-                | ImageData::Yv12 { y, u, v }
                 | ImageData::I422 { y, u, v }
                 | ImageData::I444 { y, u, v }
                 | ImageData::I42016 { y, u, v }
@@ -2032,6 +2449,12 @@ impl Encoder {
                     std::slice::from_raw_parts_mut(self.img.planes[0], y.len()).copy_from_slice(y);
                     std::slice::from_raw_parts_mut(self.img.planes[1], u.len()).copy_from_slice(u);
                     std::slice::from_raw_parts_mut(self.img.planes[2], v.len()).copy_from_slice(v);
+                }
+                // YV12 は libaom 上で planes[1]=V, planes[2]=U の順
+                ImageData::Yv12 { y, u, v } => {
+                    std::slice::from_raw_parts_mut(self.img.planes[0], y.len()).copy_from_slice(y);
+                    std::slice::from_raw_parts_mut(self.img.planes[1], v.len()).copy_from_slice(v);
+                    std::slice::from_raw_parts_mut(self.img.planes[2], u.len()).copy_from_slice(u);
                 }
                 ImageData::Nv12 { y, uv } => {
                     std::slice::from_raw_parts_mut(self.img.planes[0], y.len()).copy_from_slice(y);
@@ -2061,24 +2484,41 @@ impl Encoder {
     ///
     /// 残りのエンコード結果は [`Encoder::next_frame()`] で取得できる
     pub fn finish(&mut self) -> Result<(), Error> {
-        if !self.iter.is_null() {
-            return Err(Error::with_reason(
-                sys::aom_codec_err_t_AOM_CODEC_ERROR,
-                "shiguredo_aom::Encoder::finish",
-                "still need to call shiguredo_aom::Encoder::next_frame()",
-            ));
-        }
+        self.check_iter_drained("shiguredo_aom::Encoder::finish")?;
 
         let code = unsafe {
             sys::aom_codec_encode(
                 &mut self.ctx,
                 std::ptr::null(),
-                -1, // pts
-                0,  // duration
-                0,  // flags
+                -1, // フラッシュ信号の pts
+                0,  // 再生時間なし
+                0,  // フラグなし
             )
         };
         Error::check(code, "aom_codec_encode", Some(&self.ctx))?;
+        self.finished = true;
+        Ok(())
+    }
+
+    /// `next_frame()` の取り出しが完了していることを確認する
+    ///
+    /// `encode()` / `finish()` / `reconfigure()` は `next_frame()` の取り出し中
+    /// (`self.iter` が非 NULL) には呼べない。共通のガード処理として抽出している。
+    fn check_iter_drained(&self, function: &'static str) -> Result<(), Error> {
+        if self.finished {
+            return Err(Error::with_reason(
+                sys::aom_codec_err_t_AOM_CODEC_ERROR,
+                function,
+                "encoder already finished",
+            ));
+        }
+        if !self.iter.is_null() {
+            return Err(Error::with_reason(
+                sys::aom_codec_err_t_AOM_CODEC_ERROR,
+                function,
+                "still need to call shiguredo_aom::Encoder::next_frame()",
+            ));
+        }
         Ok(())
     }
 
@@ -2107,9 +2547,8 @@ impl Encoder {
     }
 }
 
-// 安全性: aom_codec_ctx はスレッド間で移動しても安全である。
-// libaom の内部状態はスレッドローカルな資源に依存せず、
-// コンテキストへの排他的アクセスがあれば（&mut self で保証される）問題ない。
+// 安全性: Decoder と同じ根拠で Send が安全。
+// Sync は意図的に実装しない（Decoder と同じ理由）。
 unsafe impl Send for Encoder {}
 
 impl Drop for Encoder {

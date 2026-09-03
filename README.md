@@ -37,12 +37,15 @@ Please read <https://github.com/shiguredo/oss> before use.
 - S-Frame (スイッチフレーム) サポート
 - デノイズ / フィルムグレイン
 - per-frame のキーフレーム強制
+- エンコード途中のターゲットビットレート変更 (`Encoder::reconfigure`)
 - シンボル書き換えによる他ライブラリとの衝突回避 (`shiguredo_aom_` プレフィックス付与)
 - prebuilt バイナリによる高速ビルド (デフォルト)
 - ソースからのビルドも可能 (`--features source-build`)
 
 ## 動作要件
 
+- Ubuntu 26.04 x86_64
+- Ubuntu 26.04 arm64
 - Ubuntu 24.04 x86_64
 - Ubuntu 24.04 arm64
 - Ubuntu 22.04 x86_64
@@ -158,7 +161,7 @@ encoder.encode(&image, &EncodeOptions { force_keyframe: true })?;
 
 // エンコード済みフレームを取得
 while let Some(frame) = encoder.next_frame() {
-    let data = frame.data();
+    let data = frame.data()?;
     let is_key = frame.is_keyframe();
     println!("encoded: {} bytes, keyframe: {}", data.len(), is_key);
 }
@@ -169,6 +172,44 @@ while let Some(frame) = encoder.next_frame() {
     // ...
 }
 ```
+
+### 16-bit フォーマットのエンコード
+
+`I42016` / `I42216` / `I44416` を使用する場合は、`g_bit_depth` (10 または 12) と `g_profile` をフォーマットに合わせて設定してください。`g_profile` がフォーマットと不整合な場合、またはピクセル値が `1 << g_bit_depth` 以上の値の場合、`Encoder::new` か初回 `encode` が `AOM_CODEC_INVALID_PARAM` で失敗します。
+
+- `g_bit_depth`: 16-bit 入力のピクセル値は `1 << g_bit_depth` 未満に制限されます (10-bit なら 0-1023)
+- `g_profile`: フォーマット × ビット深度の有効な組み合わせは次のとおりです
+  - `I42016` + 10-bit は profile 0
+  - `I42216` + 10-bit は profile 2
+  - `I44416` + 10-bit は profile 1
+  - 12-bit は profile 2 のみ
+
+```rust
+let mut config = EncoderConfig::new(1920, 1080, ImageFormat::I42016);
+config.g_bit_depth = Some(10);
+config.g_profile = 0;
+```
+
+8-bit フォーマットにも profile の制約があり、不正な組み合わせは `Encoder::new` が `AOM_CODEC_INVALID_PARAM` で拒否します。
+
+- `I420` / `Yv12` / `Nv12` は profile 0
+- `I422` は profile 2
+- `I444` は profile 1 (`monochrome: Some(true)` なら profile 0 も可)
+
+### エンコード途中のビットレート変更
+
+`Encoder::reconfigure()` でエンコーダーを破棄せずにターゲットビットレートを変更できます (libwebrtc の `LibaomAv1Encoder::SetRates` 相当)。タイムベースは初期化時に固定し、ランタイムでは変更しません。
+
+```rust
+use shiguredo_aom::ReconfigureParams;
+
+// 500 kbps から 2000 kbps に切り替え
+encoder.reconfigure(ReconfigureParams {
+    rc_target_bitrate: Some(2000), // kbps
+})?;
+```
+
+完全な例は `examples/midstream_reconfigure.rs` を参照してください。
 
 ### デコード
 
@@ -183,9 +224,9 @@ decoder.decode(&compressed_data)?;
 
 // デコード済みフレームを取得
 while let Some(frame) = decoder.next_frame() {
-    let y = frame.y_plane();
-    let u = frame.u_plane();
-    let v = frame.v_plane();
+    let y = frame.y_plane()?;
+    let u = frame.u_plane()?;
+    let v = frame.v_plane()?;
     let is_high_depth = frame.is_high_depth();
     println!("{}x{} high_depth={}", frame.width(), frame.height(), is_high_depth);
 }
@@ -245,7 +286,7 @@ while let Some(frame) = decoder.next_frame() {
 
 ### `EncoderConfig`
 
-フィールド名は libaom の `aom_codec_enc_cfg_t` および `aom_codec_control` の制御パラメータに準拠しています。
+フィールド名は libaom の `aom_codec_enc_cfg_t` および `aom_codec_control` の制御パラメータに準拠しています。新規フィールド追加は破壊的変更として扱います。構造体は `EncoderConfig::new()` 経由で生成してから個別フィールドを上書きしてください。
 
 #### 基本設定
 
@@ -264,7 +305,7 @@ while let Some(frame) = decoder.next_frame() {
 | `g_input_bit_depth` | `Option<u32>` | 入力フレームのビット深度 |
 | `g_timebase` | `AomRational` | タイムベース (例: 30fps なら num=1, den=30) |
 | `g_error_resilient` | `bool` | エラー耐性モード |
-| `g_pass` | `Option<EncodingPass>` | マルチパスエンコーディングモード |
+| `g_pass` | `Option<EncodingPass>` | エンコーディングモード (シングルパスのみ対応) |
 | `g_lag_in_frames` | `Option<u32>` | 先読みフレーム数 |
 
 #### レート制御
@@ -336,6 +377,9 @@ while let Some(frame) = decoder.next_frame() {
 | `deltaq_mode` | `Option<u32>` | デルタ Q モード |
 | `lossless` | `Option<bool>` | ロスレスモード |
 | `noise_sensitivity` | `Option<u32>` | ノイズ感度 |
+| `coeff_cost_upd_freq` | `Option<u32>` | 係数 RD コストの更新頻度 (0: SB ごと, 1: SB 行ごと, 2: タイルごと, 3: 無効) |
+| `mode_cost_upd_freq` | `Option<u32>` | モード RD コストの更新頻度 (0: SB ごと, 1: SB 行ごと, 2: タイルごと, 3: 無効) |
+| `mv_cost_upd_freq` | `Option<u32>` | MV RD コストの更新頻度 (0: SB ごと, 1: SB 行ごと, 2: タイルごと, 3: 無効) |
 
 #### フィルター制御
 
@@ -357,6 +401,8 @@ while let Some(frame) = decoder.next_frame() {
 | `enable_warped_motion` | `Option<bool>` | ワープモーション有効化 |
 | `enable_tpl_model` | `Option<bool>` | TPL モデル有効化 |
 | `enable_keyframe_filtering` | `Option<u32>` | キーフレームフィルタリング (0-2) |
+| `enable_order_hint` | `Option<bool>` | order hint ツール有効化 (sequence-level) |
+| `enable_ref_frame_mvs` | `Option<bool>` | 参照フレーム動きベクトル有効化 (`enable_order_hint` が `false` のときは libaom 内部で silent に無効化される) |
 | `min_gf_interval` | `Option<u32>` | 最小 GF 間隔 |
 | `max_gf_interval` | `Option<u32>` | 最大 GF 間隔 |
 | `gf_max_pyramid_height` | `Option<u32>` | GF 最大ピラミッド高さ |
@@ -372,6 +418,8 @@ while let Some(frame) = decoder.next_frame() {
 | `enable_cfl_intra` | `Option<bool>` | CfL Intra 有効化 |
 | `enable_palette` | `Option<bool>` | パレットモード有効化 |
 | `enable_intrabc` | `Option<bool>` | IntraBC 有効化 |
+| `enable_angle_delta` | `Option<bool>` | 角度デルタ Intra 有効化 (sequence-level) |
+| `intra_default_tx_only` | `Option<bool>` | Intra ブロックの TX 探索をデフォルト変換のみに制限する (`true` で TX 探索を削減して realtime 向けに高速化) |
 
 #### パーティション
 
@@ -466,25 +514,35 @@ while let Some(frame) = decoder.next_frame() {
 
 ### `KeyframeMode`
 
+新規バリアント追加は破壊的変更として扱います。
+
 | バリアント | 説明 |
 |---|---|
-| `Fixed` | 固定間隔 |
-| `Auto` | 自動配置 |
+| `Disabled` | キーフレーム自動挿入を無効化する (`AOM_KF_DISABLED`) |
+| `Fixed` | `Disabled` の deprecated エイリアス (libaom の `AOM_KF_FIXED` は `AOM_KF_DISABLED` と同値) |
+| `Auto` | 自動配置 (`AOM_KF_AUTO`) |
 
 ### `EncodingPass`
+
+シングルパスのみ対応しています。マルチパスエンコード (FirstPass / SecondPass / ThirdPass) には対応していません。`g_pass` フィールドと `EncodingPass` は、将来のマルチパス対応に向けた拡張点として残しています。
 
 | バリアント | 説明 |
 |---|---|
 | `OnePass` | シングルパス |
-| `FirstPass` | 1 パス目 |
-| `SecondPass` | 2 パス目 |
-| `ThirdPass` | 3 パス目 |
 
 ### `EncodeOptions`
 
 | フィールド | 型 | デフォルト | 説明 |
 |---|---|---|---|
 | `force_keyframe` | `bool` | false | キーフレームを強制する |
+
+### `ReconfigureParams`
+
+`Encoder::reconfigure()` でランタイムに変更可能な設定のみを保持します (`Some` を指定したフィールドだけが反映されます)。
+
+| フィールド | 型 | 説明 |
+|---|---|---|
+| `rc_target_bitrate` | `Option<u32>` | ターゲットビットレート (kbps) |
 
 ### `DecoderConfig`
 

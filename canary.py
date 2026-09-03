@@ -3,50 +3,61 @@ import re
 import subprocess
 from typing import Optional
 
+# [package] セクション内の version 行 (行頭のフィールド名完全一致) を検出する。
+# 行頭アンカーにより rust-version 等の version を含む他のフィールドへの誤マッチを
+# 防ぐ (\bversion\b は rust-version 内の version にもマッチするため不可)。
+VERSION_LINE_RE = re.compile(r'^\s*version\s*=\s*"([\w.-]+)"', re.MULTILINE)
+
 
 # ファイルを読み込み、バージョンを更新
 def update_version(file_path: str, dry_run: bool) -> Optional[str]:
     with open(file_path, "r", encoding="utf-8") as f:
         content: str = f.read()
 
-    # [package] セクション内のバージョンのみを取得
-    package_section_match = re.search(
-        r'\[package\].*?version\s*=\s*"([\d\.\w-]+)"', content, re.DOTALL
-    )
-    if not package_section_match:
-        raise ValueError("Version not found in [package] section of Cargo.toml")
-
-    current_version: str = package_section_match.group(1)
-
-    # [package] セクションの開始位置を見つける
-    package_start = content.find("[package]")
-    # 次のセクション ([dependencies] など) の開始位置を見つける
-    next_section = re.search(r"\n\[(?!package)", content[package_start:])
+    # [package] セクションの開始位置を見つける。
+    # 行頭アンカーで検出し、コメント内の [package] 文字列への誤マッチを防ぐ
+    # (release.yml のバージョン照合と同じ定義)。
+    package_match = re.search(r"^\s*\[package\]", content, re.MULTILINE)
+    if not package_match:
+        raise ValueError("[package] section not found in Cargo.toml")
+    package_start = package_match.start()
+    # 次のセクション ([package.metadata...] / [dependencies] など) の開始位置を見つける。
+    # 任意の [ セクションで境界にする (release.yml のバージョン照合と同じ定義)。
+    # [package] 行自体にマッチしないよう、[package] 行の終端から検索する。
+    next_section = re.search(r"^\[", content[package_match.end() :], re.MULTILINE)
     if next_section:
-        package_end = package_start + next_section.start()
+        package_end = package_match.end() + next_section.start()
         package_content = content[package_start:package_end]
     else:
         package_content = content[package_start:]
 
-    # [package] セクション内のバージョンを更新
+    current_version_match = VERSION_LINE_RE.search(package_content)
+    if not current_version_match:
+        raise ValueError("Version not found in [package] section of Cargo.toml")
+
+    current_version: str = current_version_match.group(1)
+
+    # [package] セクション内の version 行のみを更新
     if "-canary." in current_version:
         updated_package, count = re.subn(
-            r'(version\s*=\s*")(\d+\.\d+\.\d+-canary\.)(\d+)',
+            r'^(\s*version\s*=\s*")(\d+\.\d+\.\d+-canary\.)(\d+)',
             lambda m: f"{m.group(1)}{m.group(2)}{int(m.group(3)) + 1}",
             package_content,
-            count=1,  # 最初の1つだけを更新
+            count=1,  # 最初の 1 つだけを更新
+            flags=re.MULTILINE,
         )
     else:
         # -canary.X がない場合、次のマイナーバージョンにして -canary.0 を追加
         updated_package, count = re.subn(
-            r'(version\s*=\s*")(\d+)\.(\d+)\.(\d+)',
+            r'^(\s*version\s*=\s*")(\d+)\.(\d+)\.(\d+)',
             lambda m: f"{m.group(1)}{m.group(2)}.{int(m.group(3)) + 1}.0-canary.0",
             package_content,
-            count=1,  # 最初の1つだけを更新
+            count=1,  # 最初の 1 つだけを更新
+            flags=re.MULTILINE,
         )
 
     if count == 0:
-        raise ValueError("Version not found or incorrect format in [package] section")
+        raise ValueError(f"Version format not supported: {current_version}")
 
     # 元のコンテンツの [package] セクション部分を更新後の内容に置き換える
     if next_section:
@@ -54,14 +65,14 @@ def update_version(file_path: str, dry_run: bool) -> Optional[str]:
     else:
         new_content = content[:package_start] + updated_package
 
-    # 新しいバージョンを確認 ([package] セクションから)
-    new_package_version_match = re.search(
-        r'\[package\].*?version\s*=\s*"([\d\.\w-]+)"', new_content, re.DOTALL
-    )
-    if not new_package_version_match:
-        raise ValueError("Failed to extract the new version after the update.")
+    # 新しいバージョンを抽出する。
+    # 変換 (subn) は count > 0 の時点で必ず version 行を更新済みのため、
+    # 抽出に失敗する経路は存在しない (失敗系は count == 0 チェックが担う)。
+    updated_version_match = VERSION_LINE_RE.search(updated_package)
+    if updated_version_match is None:
+        raise ValueError("Version line was not found in [package] section")
 
-    new_version: str = new_package_version_match.group(1)
+    new_version: str = updated_version_match.group(1)
 
     print(f"Current version: {current_version}")
     print(f"New version: {new_version}")
@@ -69,7 +80,7 @@ def update_version(file_path: str, dry_run: bool) -> Optional[str]:
         input("Do you want to update the version? (Y/n): ").strip().lower()
     )
 
-    if confirmation != "y":
+    if confirmation not in ("y", ""):
         print("Version update canceled.")
         return None
 
@@ -94,7 +105,7 @@ def run_cargo_update(dry_run: bool) -> None:
         print("cargo update shiguredo_aom executed")
 
 
-# git コミット、タグ、プッシュを実行
+# git コミットを実行
 def git_commit_version(new_version: str, dry_run: bool) -> None:
     if dry_run:
         print("Dry-run: Would run 'git add Cargo.toml Cargo.lock'")
@@ -108,7 +119,7 @@ def git_commit_version(new_version: str, dry_run: bool) -> None:
         print(f"Version bumped and committed: {new_version}")
 
 
-# git コミット、タグ、プッシュを実行
+# git タグ付け、プッシュを実行
 def git_operations_after_build(new_version: str, dry_run: bool) -> None:
     if dry_run:
         print(f"Dry-run: Would run 'git tag {new_version}'")

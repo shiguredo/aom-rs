@@ -1,0 +1,24 @@
+[package]
+name = "shiguredo_aom_fuzz"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.93"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+
+[[bin]]
+bench = false
+doc = false
+name = "decode"
+path = "fuzz_targets/decode.rs"
+test = false
+
+[dependencies]
+# cargo-fuzz ランタイム
+libfuzzer-sys = "0.4"
+# 被テスト対象 (ソースビルドで libaom をリンクする)
+shiguredo_aom = { path = "..", features = ["source-build"] }
