@@ -13,6 +13,8 @@
 
 ### misc
 
+- [ADD] CI の docs-rs ジョブに `DOCS_RS=1 cargo build` の検証ステップを追加する
+  - @voluntas
 - [UPDATE] PBT を proptest から noprop に移行する
   - @voluntas
 - [UPDATE] テストのログメッセージを日本語に統一する
