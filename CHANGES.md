@@ -11,6 +11,10 @@
 
 ## develop
 
+## 2026.2.0
+
+**リリース日**: 2026-09-03
+
 - [CHANGE] MSRV (`rust-version`) を 1.88 から 1.93 に引き上げる
   - @voluntas
 - [CHANGE] `KeyframeMode` に `Disabled` variant を追加する
@@ -33,7 +37,7 @@
   - @voluntas
 - [ADD] `EncoderConfig` に `mv_cost_upd_freq` フィールドを追加する
   - @voluntas
-- [ADD] `pbt/` に proptest による Property-Based Testing を追加する
+- [ADD] `pbt/` に noprop による Property-Based Testing を追加する
   - @voluntas
 - [ADD] `fuzz/` に cargo-fuzz によるデコーダー fuzz ターゲットを追加する
   - @voluntas
@@ -66,9 +70,9 @@
   - @voluntas
 - [ADD] `Encoder` / `Decoder` のスレッド間移動検証テストを追加する
   - @voluntas
-- [UPDATE] build-dependencies の `shiguredo_cmake` を 4.3 から 4.4 に更新する
+- [ADD] CI の docs-rs ジョブに `DOCS_RS=1 cargo build` の検証ステップを追加する
   - @voluntas
-- [UPDATE] `pbt/` の `proptest` を 1.7 から 1.11 に更新する
+- [UPDATE] build-dependencies の `shiguredo_cmake` を 4.3 から 4.4 に更新する
   - @voluntas
 - [UPDATE] `Encoder::encode()` / `finish()` / `reconfigure()` の `next_frame()` ガードを `check_iter_drained` ヘルパーに集約する
   - @voluntas
@@ -86,7 +90,19 @@
   - @voluntas
 - [UPDATE] CI / release ワークフローの Slack 通知とリリース手順を修正する (slack_notify の `always()` / `GH_TOKEN`、タグと Cargo.toml のバージョン照合、正式リリースの draft 化)
   - @voluntas
+- [UPDATE] テストのログメッセージを日本語に統一する
+  - @voluntas
+- [UPDATE] 共有ヘルパーを `tests/helpers/mod.rs` から `tests/helpers/helpers.rs` に移し `#[path]` で読み込む (`mod.rs` 禁止への対応)
+  - @voluntas
+- [UPDATE] `src/sys.rs` の lint 抑止を `#[allow]` から `#[expect]` に統一し、未発火の 3 件を除去する
+  - @voluntas
+- [UPDATE] `prek.toml` の組み込みフックを参考設定に合わせて拡充する
+  - @voluntas
+- [UPDATE] `pbt/` と `fuzz/` の `Cargo.toml` に `rust-version = "1.93"` を明記する
+  - @voluntas
 - [FIX] `canary.py` のバージョン検出・変換を Cargo.toml の [package] セクションの version 行に限定し、rust-version 等への誤マッチを防ぐ
+  - @voluntas
+- [FIX] スレッド間移動テストの受信にタイムアウトを付け、子スレッドのハングを失敗として検出する
   - @voluntas
 
 ## 2026.1.0

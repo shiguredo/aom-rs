@@ -7,8 +7,42 @@
 
 use shiguredo_aom::{Decoder, DecoderConfig, EncodeOptions, Encoder, RateControlMode};
 
+#[path = "helpers/helpers.rs"]
 mod helpers;
 use helpers::*;
+
+// 子スレッドからの受信待ちの上限
+//
+// 320x240 12 フレームのエンコード・デコードは通常 1 秒未満で完了するため、
+// CI 環境の性能変動を考慮しても 30 秒は十分なマージンがある。
+const RECV_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// 子スレッドからの受信をタイムアウト付きで行い、完了を join で確認する
+///
+/// 受信を先に行うことで、子スレッドのハングをタイムアウトによる失敗として検出する。
+/// ハングした子スレッドの join はブロックするため、タイムアウト時は join を呼ばない。
+/// 切断時は子スレッドが panic した可能性があるため join で検査する。
+fn recv_with_timeout<T>(
+    rx: std::sync::mpsc::Receiver<T>,
+    handle: std::thread::JoinHandle<()>,
+    target: &str,
+) -> T {
+    match rx.recv_timeout(RECV_TIMEOUT) {
+        Ok(value) => {
+            // 受信成功後に子スレッドの panic を検査する
+            handle.join().expect("スレッド A がパニックした");
+            value
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            panic!("{target}の受信がタイムアウトした (子スレッドがハングしている可能性)");
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            // 送信前に子スレッドが終了した場合は join で panic の有無を検査する
+            handle.join().expect("スレッド A がパニックした");
+            unreachable!("切断後に join が成功することはないはず");
+        }
+    }
+}
 
 // ============================================================================
 // スレッド間移動テスト
@@ -68,13 +102,12 @@ fn test_encoder_send_across_threads() {
             .expect("エンコーダーの送信に失敗した");
     });
 
-    // 子スレッドがパニックなく完了したことを確認してから受信する。
-    // join を先に呼ぶことで、子スレッドの panic を「受信に失敗した」という誤導的なメッセージで握りつぶさない
-    handle.join().expect("スレッド A がパニックした");
-
+    // 受信を先に行い、子スレッドの完了は受信後に join で確認する。
+    // 受信にタイムアウトを付けることで、子スレッドのハングを失敗として検出する。
+    //
     // メインスレッドで残りのフレームをエンコードする。
     // スレッド A 側のパケットを起点に、メインスレッドのエンコード結果と finish 後のドレインを追記して全パケットを結合する
-    let (mut encoder, mut all_packets) = rx.recv().expect("エンコーダーの受信に失敗した");
+    let (mut encoder, mut all_packets) = recv_with_timeout(rx, handle, "エンコーダー");
     let mut packets_after_move = Vec::new();
     drive_dummy(
         &mut encoder,
@@ -180,9 +213,9 @@ fn test_decoder_send_across_threads() {
     });
 
     // メインスレッドで残りのパケットをデコードする。
-    // join を先に呼ぶことで、子スレッドの panic を「受信に失敗した」という誤導的なメッセージで握りつぶさない
-    handle.join().expect("スレッド A がパニックした");
-    let (mut decoder, decoded_in_thread_a) = rx.recv().expect("デコーダーの受信に失敗した");
+    // 受信を先に行い、子スレッドの完了は受信後に join で確認する。
+    // 受信にタイムアウトを付けることで、子スレッドのハングを失敗として検出する。
+    let (mut decoder, decoded_in_thread_a) = recv_with_timeout(rx, handle, "デコーダー");
     let mut decoded_after_move: Vec<(Vec<u8>, usize, usize)> = Vec::new();
     for packet in main_packets {
         decoder.decode(packet).expect("移動後のデコードに失敗した");

@@ -29,6 +29,9 @@ fn main() {
     println!("cargo::rerun-if-env-changed=CARGO_FEATURE_SOURCE_BUILD");
     println!("cargo::rerun-if-env-changed=LIBAOM_TARGET");
     println!("cargo::rerun-if-env-changed=DOCS_RS");
+    // docs.rs 向けダミー bindings か実 bindings かで発火する lint が異なるため、
+    // sys.rs の lint 抑止を切り替える cfg を用意する
+    println!("cargo::rustc-check-cfg=cfg(docs_rs)");
 
     // 各種変数やビルドディレクトリのセットアップ
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("infallible"));
@@ -58,6 +61,9 @@ fn main() {
         // 定数値は libaom v3.14.1 の実値を反映している。
         //
         // 参照: https://docs.rs/about/builds
+        //
+        // sys.rs の lint 抑止をダミー bindings 用に切り替える
+        println!("cargo::rustc-cfg=docs_rs");
         fs::write(
             output_bindings_path,
             include_str!("build/dummy_bindings.rs"),

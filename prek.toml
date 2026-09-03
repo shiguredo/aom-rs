@@ -16,8 +16,21 @@ repo = "builtin"
 hooks = [
   { id = "trailing-whitespace" },
   { id = "end-of-file-fixer" },
+  { id = "fix-byte-order-marker" },
   { id = "check-toml" },
   { id = "check-yaml" },
+  { id = "check-json" },
+  { id = "check-merge-conflict" },
+  { id = "check-case-conflict" },
+  { id = "check-illegal-windows-names" },
+  { id = "check-added-large-files" },
+  { id = "detect-private-key" },
+  { id = "mixed-line-ending" },
+  { id = "check-symlinks" },
+  { id = "destroyed-symlinks" },
+  { id = "check-executables-have-shebangs" },
+  # Rust の inner attribute #![...] が shebang と誤判定されるため Rust ファイルは除外する
+  { id = "check-shebang-scripts-are-executable", exclude_types = ["rust"] },
 ]
 
 # tombi: TOML のフォーマッタ・リンタ

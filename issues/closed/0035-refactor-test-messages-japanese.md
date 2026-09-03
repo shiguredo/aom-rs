@@ -1,7 +1,7 @@
 # テストの assert / panic メッセージを日本語に統一する
 
 - Created: 2026-08-06
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-09-03
 - Branch: feature/refactor-test-messages-japanese
 - Polished: {YYYY-MM-DD}
 
@@ -32,3 +32,10 @@ AGENTS.md には「テストのログメッセージは全て日本語にする�
 
 - `tests/roundtrip.rs` / `tests/helpers/mod.rs` / `tests/reconfigure.rs` の assert / panic / expect メッセージを日本語に書き換える
 - 検証: 書き換え後に全テストを実行し、メッセージの言語以外の差分がないことを `git diff` で確認する
+
+## 実際の対応
+
+- shiguredo-rust 規約整備の一環として対応した (`tests/roundtrip.rs`、`tests/helpers/`、`pbt/tests/reconfigure.rs` の expect / assert メッセージを日本語化)
+- `tests/helpers/mod.rs` は `tests/helpers/helpers.rs` に移動したため、パス読み替えで追跡すること
+- `pbt/tests/reconfigure.rs` は noprop 移行時に日本語メッセージで書き直した
+- 全テスト通過を確認した

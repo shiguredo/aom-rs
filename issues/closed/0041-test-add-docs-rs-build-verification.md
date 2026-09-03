@@ -1,7 +1,7 @@
 # CI の docs-rs ジョブに DOCS_RS=1 cargo build の検証ステップを追加する
 
 - Created: 2026-08-07
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-09-03
 - Branch: feature/add-docs-rs-ci-build-verification
 - Polished: 2026-08-12
 
@@ -32,4 +32,5 @@
 
 ## 解決方法
 
-- 実装完了時に実際の対応内容を追記する
+- `.github/workflows/ci.yml` の docs-rs ジョブに `cargo build` ステップを `cargo doc --no-deps` の前に追加した (ジョブの `env: DOCS_RS: 1` により型チェック付きビルドとして実行される)
+- 検証: `build/dummy_bindings.rs` から `aom_codec_av1_cx` を削除して `DOCS_RS=1 cargo build` が E0425 で失敗すること、復元して成功することをローカルで確認した

@@ -1,7 +1,7 @@
 # スレッド間移動テストに mpsc 受信タイムアウトを導入する
 
 - Created: 2026-08-07
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-09-03
 - Branch: feature/fix-recv-timeout-in-send-across-threads
 - Polished: 2026-08-12
 
@@ -35,4 +35,6 @@
 
 ## 解決方法
 
-- 実装完了時に実際の対応内容を追記する
+- `rx.recv()` を先行させた `recv_with_timeout` ヘルパー (タイムアウト 30 秒) を追加し、両移動テストの受信に適用した
+- タイムアウト時は日本語メッセージで panic し join を呼ばない (ハングしたスレッドの join はブロックするため)。切断時は join で子スレッドの panic を検査する
+- 検証: 子スレッド側に人工ハングを入れてタイムアウト発火を確認し (1 秒短縮で失敗を確認)、復元後に全テストが通ることを確認した
