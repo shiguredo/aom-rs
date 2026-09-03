@@ -27,6 +27,8 @@
   - @voluntas
 - [UPDATE] `pbt/` と `fuzz/` の `Cargo.toml` に `rust-version = "1.93"` を明記する
   - @voluntas
+- [FIX] スレッド間移動テストの受信にタイムアウトを付け、子スレッドのハングを失敗として検出する
+  - @voluntas
 
 ## 2026.2.0
 
