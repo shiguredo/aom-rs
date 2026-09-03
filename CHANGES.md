@@ -11,6 +11,21 @@
 
 ## develop
 
+### misc
+
+- [UPDATE] PBT を proptest から noprop に移行する
+  - @voluntas
+- [UPDATE] テストのログメッセージを日本語に統一する
+  - @voluntas
+- [UPDATE] 共有ヘルパーを `tests/helpers/mod.rs` から `tests/helpers/helpers.rs` に移し `#[path]` で読み込む (`mod.rs` 禁止への対応)
+  - @voluntas
+- [UPDATE] `src/sys.rs` の lint 抑止を `#[allow]` から `#[expect]` に統一し、未発火の 3 件を除去する
+  - @voluntas
+- [UPDATE] `prek.toml` の組み込みフックを参考設定に合わせて拡充する
+  - @voluntas
+- [UPDATE] `pbt/` と `fuzz/` の `Cargo.toml` に `rust-version = "1.93"` を明記する
+  - @voluntas
+
 ## 2026.2.0
 
 **リリース日**: 2026-08-12

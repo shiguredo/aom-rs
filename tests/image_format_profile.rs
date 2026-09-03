@@ -9,6 +9,7 @@ use shiguredo_aom::{
     EncodeOptions, Encoder, EncoderConfig, ImageData, ImageFormat, RateControlMode,
 };
 
+#[path = "helpers/helpers.rs"]
 mod helpers;
 use helpers::*;
 

@@ -7,6 +7,7 @@
 
 use shiguredo_aom::{Decoder, DecoderConfig, EncodeOptions, Encoder, RateControlMode};
 
+#[path = "helpers/helpers.rs"]
 mod helpers;
 use helpers::*;
 

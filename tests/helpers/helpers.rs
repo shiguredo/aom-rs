@@ -1,3 +1,7 @@
+//! 統合テスト間で共有するヘルパー
+//!
+//! フレーム生成・品質計測・エンコード / デコード・ラウンドトリップ・設定生成を提供する。
+
 use shiguredo_aom::{
     Decoder, DecoderConfig, EncodeOptions, Encoder, EncoderConfig, ImageData, ImageFormat,
     RateControlMode, ReconfigureParams, Usage,
@@ -113,7 +117,7 @@ pub(crate) fn generate_colorbar_16bit(
         ImageFormat::I42016 => (width.div_ceil(2), height.div_ceil(2)),
         ImageFormat::I42216 => (width.div_ceil(2), height),
         ImageFormat::I44416 => (width, height),
-        _ => panic!("generate_colorbar_16bit: unsupported format {format:?}"),
+        _ => panic!("対応しないフォーマット: {format:?}"),
     };
     let scale = ((1u32 << bit_depth) - 1) as f64 / 255.0;
 
@@ -139,7 +143,7 @@ pub(crate) fn generate_colorbar_16bit(
                 ImageFormat::I42216 if col % 2 == 0 => Some((col / 2, row)),
                 ImageFormat::I42016 if col % 2 == 0 && row % 2 == 0 => Some((col / 2, row / 2)),
                 ImageFormat::I42216 | ImageFormat::I42016 => None,
-                _ => unreachable!("generate_colorbar_16bit: unsupported format {format:?}"),
+                _ => unreachable!("対応しないフォーマット: {format:?}"),
             };
             if let Some((uv_col, uv_row)) = uv_cell {
                 let u = (-0.148 * rf - 0.291 * gf + 0.439 * bf + 128.0).clamp(16.0, 240.0) * scale;
@@ -215,8 +219,8 @@ pub(crate) fn psnr_y_16bit(
 pub(crate) fn extract_y_plane(frame: &shiguredo_aom::DecodedFrame<'_>) -> Vec<u8> {
     let width = frame.width();
     let height = frame.height();
-    let stride = frame.y_stride().expect("failed to get Y stride");
-    let y_data = frame.y_plane().expect("failed to get Y plane");
+    let stride = frame.y_stride().expect("Y ストライドの取得に失敗した");
+    let y_data = frame.y_plane().expect("Y プレーンの取得に失敗した");
     let mut y = Vec::new();
     for row in 0..height {
         y.extend_from_slice(&y_data[row * stride..row * stride + width]);
@@ -232,8 +236,8 @@ pub(crate) fn extract_y_plane(frame: &shiguredo_aom::DecodedFrame<'_>) -> Vec<u8
 pub(crate) fn extract_y_plane_16bit(frame: &shiguredo_aom::DecodedFrame<'_>) -> Vec<u16> {
     let width = frame.width();
     let height = frame.height();
-    let stride = frame.y_stride().expect("failed to get Y stride");
-    let y_data = frame.y_plane().expect("failed to get Y plane");
+    let stride = frame.y_stride().expect("Y ストライドの取得に失敗した");
+    let y_data = frame.y_plane().expect("Y プレーンの取得に失敗した");
     let mut y = Vec::new();
     for row in 0..height {
         for col in 0..width {
@@ -252,7 +256,7 @@ pub(crate) fn encode_frames(
     config: EncoderConfig,
     frames: &[(Vec<u8>, Vec<u8>, Vec<u8>)],
 ) -> Vec<Vec<u8>> {
-    let mut encoder = Encoder::new(config).expect("failed to create encoder");
+    let mut encoder = Encoder::new(config).expect("エンコーダーの生成に失敗した");
     let options = EncodeOptions {
         force_keyframe: false,
     };
@@ -260,15 +264,27 @@ pub(crate) fn encode_frames(
 
     for (y, u, v) in frames {
         let image = ImageData::I420 { y, u, v };
-        encoder.encode(&image, &options).expect("failed to encode");
+        encoder
+            .encode(&image, &options)
+            .expect("エンコードに失敗した");
         while let Some(encoded) = encoder.next_frame() {
-            encoded_packets.push(encoded.data().expect("failed to get encoded data").to_vec());
+            encoded_packets.push(
+                encoded
+                    .data()
+                    .expect("エンコードデータの取得に失敗した")
+                    .to_vec(),
+            );
         }
     }
 
-    encoder.finish().expect("failed to finish");
+    encoder.finish().expect("終了処理に失敗した");
     while let Some(encoded) = encoder.next_frame() {
-        encoded_packets.push(encoded.data().expect("failed to get encoded data").to_vec());
+        encoded_packets.push(
+            encoded
+                .data()
+                .expect("エンコードデータの取得に失敗した")
+                .to_vec(),
+        );
     }
 
     encoded_packets
@@ -282,7 +298,7 @@ pub(crate) fn encode_frames_16bit(
     frames: &[(Vec<u16>, Vec<u16>, Vec<u16>)],
 ) -> Vec<Vec<u8>> {
     let image_format = config.image_format;
-    let mut encoder = Encoder::new(config).expect("failed to create encoder");
+    let mut encoder = Encoder::new(config).expect("エンコーダーの生成に失敗した");
     let options = EncodeOptions {
         force_keyframe: false,
     };
@@ -309,11 +325,18 @@ pub(crate) fn encode_frames_16bit(
                 u: &u,
                 v: &v,
             },
-            _ => panic!("encode_frames_16bit: unsupported format {image_format:?}"),
+            _ => panic!("対応しないフォーマット: {image_format:?}"),
         };
-        encoder.encode(&image, &options).expect("failed to encode");
+        encoder
+            .encode(&image, &options)
+            .expect("エンコードに失敗した");
         while let Some(encoded) = encoder.next_frame() {
-            encoded_packets.push(encoded.data().expect("failed to get encoded data").to_vec());
+            encoded_packets.push(
+                encoded
+                    .data()
+                    .expect("エンコードデータの取得に失敗した")
+                    .to_vec(),
+            );
         }
     }
 
@@ -334,17 +357,17 @@ pub(crate) fn decode_frames_with_config(
     config: DecoderConfig,
     packets: &[Vec<u8>],
 ) -> Vec<(Vec<u8>, usize, usize)> {
-    let mut decoder = Decoder::new(config).expect("failed to create decoder");
+    let mut decoder = Decoder::new(config).expect("デコーダーの生成に失敗した");
     let mut decoded = Vec::new();
 
     for packet in packets {
-        decoder.decode(packet).expect("failed to decode");
+        decoder.decode(packet).expect("デコードに失敗した");
         while let Some(frame) = decoder.next_frame() {
             decoded.push((extract_y_plane(&frame), frame.width(), frame.height()));
         }
     }
 
-    decoder.finish().expect("failed to finish");
+    decoder.finish().expect("終了処理に失敗した");
     while let Some(frame) = decoder.next_frame() {
         decoded.push((extract_y_plane(&frame), frame.width(), frame.height()));
     }
@@ -358,13 +381,13 @@ pub(crate) fn decode_frames_with_config(
 pub(crate) fn decode_frames_16bit(
     packets: &[Vec<u8>],
 ) -> Vec<(Vec<u16>, usize, usize, ImageFormat)> {
-    let mut decoder = Decoder::new(DecoderConfig::default()).expect("failed to create decoder");
+    let mut decoder = Decoder::new(DecoderConfig::default()).expect("デコーダーの生成に失敗した");
     let mut decoded = Vec::new();
 
     for packet in packets {
-        decoder.decode(packet).expect("failed to decode");
+        decoder.decode(packet).expect("デコードに失敗した");
         while let Some(frame) = decoder.next_frame() {
-            let format = frame.format().expect("failed to get frame format");
+            let format = frame.format().expect("フレーム形式の取得に失敗した");
             decoded.push((
                 extract_y_plane_16bit(&frame),
                 frame.width(),
@@ -374,9 +397,9 @@ pub(crate) fn decode_frames_16bit(
         }
     }
 
-    decoder.finish().expect("failed to finish");
+    decoder.finish().expect("終了処理に失敗した");
     while let Some(frame) = decoder.next_frame() {
-        let format = frame.format().expect("failed to get frame format");
+        let format = frame.format().expect("フレーム形式の取得に失敗した");
         decoded.push((
             extract_y_plane_16bit(&frame),
             frame.width(),
@@ -402,20 +425,20 @@ pub(crate) fn roundtrip(
     let num_frames = input_frames.len();
 
     let packets = encode_frames(config, input_frames);
-    assert!(!packets.is_empty(), "no encoded packets");
+    assert!(!packets.is_empty(), "エンコード結果が空");
 
     let decoded_frames = decode_frames(&packets);
 
     assert_eq!(
         decoded_frames.len(),
         num_frames,
-        "decoded {} frames, expected {num_frames}",
+        "デコード結果が {} フレーム、期待値は {num_frames}",
         decoded_frames.len()
     );
     for (i, (y, w, h)) in decoded_frames.iter().enumerate() {
-        assert_eq!(*w, width, "decoded frame {i} width mismatch");
-        assert_eq!(*h, height, "decoded frame {i} height mismatch");
-        assert!(!y.is_empty(), "decoded frame {i} has empty Y plane");
+        assert_eq!(*w, width, "フレーム {i}: 幅が一致しない");
+        assert_eq!(*h, height, "フレーム {i}: 高さが一致しない");
+        assert!(!y.is_empty(), "フレーム {i}: Y プレーンが空");
     }
 
     decoded_frames
@@ -440,7 +463,7 @@ pub(crate) fn roundtrip_colorbar(config: EncoderConfig, num_frames: usize, min_p
         let psnr = psnr_y(&y, decoded_y, width, height);
         assert!(
             psnr >= min_psnr_db,
-            "frame {i}: PSNR {psnr:.1} dB < {min_psnr_db} dB"
+            "フレーム {i}: PSNR {psnr:.1} dB < {min_psnr_db} dB"
         );
     }
 }
@@ -455,7 +478,7 @@ pub(crate) fn roundtrip_colorbar_16bit(config: EncoderConfig, num_frames: usize,
     let expected_format = config.image_format;
     let bit_depth = config
         .g_bit_depth
-        .expect("g_bit_depth must be set for 16-bit encoding") as usize;
+        .expect("16-bit エンコードには g_bit_depth の指定が必要") as usize;
 
     let (y, u, v) = generate_colorbar_16bit(width, height, expected_format, bit_depth);
     let input_frames: Vec<(Vec<u16>, Vec<u16>, Vec<u16>)> = (0..num_frames)
@@ -463,26 +486,23 @@ pub(crate) fn roundtrip_colorbar_16bit(config: EncoderConfig, num_frames: usize,
         .collect();
 
     let packets = encode_frames_16bit(config, &input_frames);
-    assert!(!packets.is_empty(), "no encoded packets");
+    assert!(!packets.is_empty(), "エンコード結果が空");
 
     let decoded_frames = decode_frames_16bit(&packets);
     assert_eq!(
         decoded_frames.len(),
         num_frames,
-        "decoded {} frames, expected {num_frames}",
+        "デコード結果が {} フレーム、期待値は {num_frames}",
         decoded_frames.len()
     );
     for (i, (decoded_y, w, h, format)) in decoded_frames.iter().enumerate() {
-        assert_eq!(*w, width, "decoded frame {i} width mismatch");
-        assert_eq!(*h, height, "decoded frame {i} height mismatch");
-        assert_eq!(
-            *format, expected_format,
-            "decoded frame {i} format mismatch"
-        );
+        assert_eq!(*w, width, "フレーム {i}: 幅が一致しない");
+        assert_eq!(*h, height, "フレーム {i}: 高さが一致しない");
+        assert_eq!(*format, expected_format, "フレーム {i}: 形式が一致しない");
         let psnr = psnr_y_16bit(&y, decoded_y, width, height, bit_depth);
         assert!(
             psnr >= min_psnr_db,
-            "frame {i}: PSNR {psnr:.1} dB < {min_psnr_db} dB"
+            "フレーム {i}: PSNR {psnr:.1} dB < {min_psnr_db} dB"
         );
     }
 }
@@ -587,21 +607,34 @@ pub(crate) fn drive_dummy(
             u: &u,
             v: &v,
         };
-        encoder.encode(&image, options).expect("failed to encode");
+        encoder
+            .encode(&image, options)
+            .expect("エンコードに失敗した");
         while let Some(encoded) = encoder.next_frame() {
-            packets.push(encoded.data().expect("failed to get encoded data").to_vec());
+            packets.push(
+                encoded
+                    .data()
+                    .expect("エンコードデータの取得に失敗した")
+                    .to_vec(),
+            );
         }
     }
 }
 
 /// `finish()` を呼び、残りのパケットを `packets` に積む
 pub(crate) fn drain_after_finish(encoder: &mut Encoder, packets: &mut Vec<Vec<u8>>) {
-    encoder.finish().expect("failed to finish");
+    encoder.finish().expect("終了処理に失敗した");
     while let Some(encoded) = encoder.next_frame() {
-        packets.push(encoded.data().expect("failed to get encoded data").to_vec());
+        packets.push(
+            encoded
+                .data()
+                .expect("エンコードデータの取得に失敗した")
+                .to_vec(),
+        );
     }
 }
 
+/// パケット列の合計バイト数を返す
 pub(crate) fn total_bytes(packets: &[Vec<u8>]) -> u64 {
     packets.iter().map(|p| p.len() as u64).sum()
 }

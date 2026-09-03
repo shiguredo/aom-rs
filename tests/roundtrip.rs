@@ -3,6 +3,7 @@ use shiguredo_aom::{
     KeyframeMode, RateControlMode, Usage,
 };
 
+#[path = "helpers/helpers.rs"]
 mod helpers;
 use helpers::*;
 
@@ -165,7 +166,7 @@ fn test_roundtrip_force_keyframe() {
 
     let config = realtime_config(width, height, RateControlMode::Cbr);
 
-    let mut encoder = Encoder::new(config).expect("failed to create encoder");
+    let mut encoder = Encoder::new(config).expect("エンコーダーの生成に失敗した");
     let mut packets = Vec::new();
     let mut keyframe_count = 0;
 
@@ -179,25 +180,37 @@ fn test_roundtrip_force_keyframe() {
             u: &u,
             v: &v,
         };
-        encoder.encode(&image, &options).expect("failed to encode");
+        encoder
+            .encode(&image, &options)
+            .expect("エンコードに失敗した");
         while let Some(encoded) = encoder.next_frame() {
             if encoded.is_keyframe() {
                 keyframe_count += 1;
             }
-            packets.push(encoded.data().expect("failed to get encoded data").to_vec());
+            packets.push(
+                encoded
+                    .data()
+                    .expect("エンコードデータの取得に失敗した")
+                    .to_vec(),
+            );
         }
     }
-    encoder.finish().expect("failed to finish");
+    encoder.finish().expect("終了処理に失敗した");
     while let Some(encoded) = encoder.next_frame() {
         if encoded.is_keyframe() {
             keyframe_count += 1;
         }
-        packets.push(encoded.data().expect("failed to get encoded data").to_vec());
+        packets.push(
+            encoded
+                .data()
+                .expect("エンコードデータの取得に失敗した")
+                .to_vec(),
+        );
     }
 
     assert!(
         keyframe_count >= 2,
-        "expected at least 2 keyframes, got {keyframe_count}"
+        "キーフレームが 2 枚以上あるはず: {keyframe_count} 枚"
     );
 
     // デコードで復号できることを確認する
@@ -273,7 +286,7 @@ fn test_keyframe_mode_disabled_suppresses_periodic_keyframe() {
     let num_frames = 30;
 
     let config = realtime_with_disabled_keyframe(width, height);
-    let mut encoder = Encoder::new(config).expect("failed to create encoder");
+    let mut encoder = Encoder::new(config).expect("エンコーダーの生成に失敗した");
     let mut keyframe_flags = Vec::new();
     let mut packets = Vec::new();
 
@@ -288,42 +301,54 @@ fn test_keyframe_mode_disabled_suppresses_periodic_keyframe() {
             v: &v,
         };
         let pre = keyframe_flags.len();
-        encoder.encode(&image, &options).expect("failed to encode");
+        encoder
+            .encode(&image, &options)
+            .expect("エンコードに失敗した");
         while let Some(encoded) = encoder.next_frame() {
             keyframe_flags.push(encoded.is_keyframe());
-            packets.push(encoded.data().expect("failed to get encoded data").to_vec());
+            packets.push(
+                encoded
+                    .data()
+                    .expect("エンコードデータの取得に失敗した")
+                    .to_vec(),
+            );
         }
         assert!(
             keyframe_flags.len() > pre,
-            "frame {i}: encoder produced no output (g_lag_in_frames=0 expected to drain)"
+            "フレーム {i}: 出力が無い (g_lag_in_frames=0 では即時出力されるはず)"
         );
     }
     let pre_finish = keyframe_flags.len();
-    encoder.finish().expect("failed to finish");
+    encoder.finish().expect("終了処理に失敗した");
     while let Some(encoded) = encoder.next_frame() {
         keyframe_flags.push(encoded.is_keyframe());
-        packets.push(encoded.data().expect("failed to get encoded data").to_vec());
+        packets.push(
+            encoded
+                .data()
+                .expect("エンコードデータの取得に失敗した")
+                .to_vec(),
+        );
     }
     assert_eq!(
         keyframe_flags.len(),
         pre_finish,
-        "finish should not produce extra frames under g_lag_in_frames=0"
+        "finish 後に余分なフレームが出力されないはず (g_lag_in_frames=0)"
     );
 
     assert_eq!(
         keyframe_flags.len(),
         num_frames,
-        "expected {num_frames} encoded frames, got {}",
+        "エンコード結果が {num_frames} フレームあるはず、実際は {}",
         keyframe_flags.len()
     );
     assert!(
         keyframe_flags[0],
-        "expected the first frame to be a keyframe (AV1 sequence header constraint)"
+        "先頭フレームはキーフレームのはず (AV1 シーケンスヘッダー制約)"
     );
     for (i, &is_key) in keyframe_flags.iter().enumerate().skip(1) {
         assert!(
             !is_key,
-            "frame {i} should not be a keyframe under KeyframeMode::Disabled"
+            "フレーム {i}: KeyframeMode::Disabled 下ではキーフレームにならないはず"
         );
     }
 
@@ -341,7 +366,7 @@ fn test_keyframe_mode_disabled_with_force_keyframe() {
     let force_index = 10;
 
     let config = realtime_with_disabled_keyframe(width, height);
-    let mut encoder = Encoder::new(config).expect("failed to create encoder");
+    let mut encoder = Encoder::new(config).expect("エンコーダーの生成に失敗した");
     let mut keyframe_flags = Vec::new();
     let mut packets = Vec::new();
 
@@ -355,27 +380,39 @@ fn test_keyframe_mode_disabled_with_force_keyframe() {
             u: &u,
             v: &v,
         };
-        encoder.encode(&image, &options).expect("failed to encode");
+        encoder
+            .encode(&image, &options)
+            .expect("エンコードに失敗した");
         while let Some(encoded) = encoder.next_frame() {
             keyframe_flags.push(encoded.is_keyframe());
-            packets.push(encoded.data().expect("failed to get encoded data").to_vec());
+            packets.push(
+                encoded
+                    .data()
+                    .expect("エンコードデータの取得に失敗した")
+                    .to_vec(),
+            );
         }
     }
-    encoder.finish().expect("failed to finish");
+    encoder.finish().expect("終了処理に失敗した");
     while let Some(encoded) = encoder.next_frame() {
         keyframe_flags.push(encoded.is_keyframe());
-        packets.push(encoded.data().expect("failed to get encoded data").to_vec());
+        packets.push(
+            encoded
+                .data()
+                .expect("エンコードデータの取得に失敗した")
+                .to_vec(),
+        );
     }
 
     assert_eq!(
         keyframe_flags.len(),
         num_frames,
-        "expected {num_frames} encoded frames, got {}",
+        "エンコード結果が {num_frames} フレームあるはず、実際は {}",
         keyframe_flags.len()
     );
     for (i, &is_key) in keyframe_flags.iter().enumerate() {
         let expected = i == 0 || i == force_index;
-        assert_eq!(is_key, expected, "frame {i}");
+        assert_eq!(is_key, expected, "フレーム {i}");
     }
 
     let decoded_frames = decode_frames(&packets);
@@ -401,7 +438,7 @@ fn test_cost_upd_freq_out_of_range_returns_error() {
         let result = Encoder::new(config);
         assert!(
             result.is_err(),
-            "{name} = Some(99) must be rejected by libaom RANGE_CHECK, but Encoder::new succeeded"
+            "{name} = Some(99) は libaom の RANGE_CHECK で拒否されるはず"
         );
     }
 }
@@ -420,7 +457,7 @@ fn test_keyframe_mode_auto_inserts_periodic_keyframe() {
     config.kf_min_dist = Some(0);
     config.kf_max_dist = Some(5);
 
-    let mut encoder = Encoder::new(config).expect("failed to create encoder");
+    let mut encoder = Encoder::new(config).expect("エンコーダーの生成に失敗した");
     let mut keyframe_count = 0;
 
     for i in 0..num_frames {
@@ -433,26 +470,28 @@ fn test_keyframe_mode_auto_inserts_periodic_keyframe() {
             u: &u,
             v: &v,
         };
-        encoder.encode(&image, &options).expect("failed to encode");
+        encoder
+            .encode(&image, &options)
+            .expect("エンコードに失敗した");
         while let Some(encoded) = encoder.next_frame() {
             if encoded.is_keyframe() {
                 keyframe_count += 1;
             }
-            let _data = encoded.data().expect("failed to get encoded data");
+            let _data = encoded.data().expect("エンコードデータの取得に失敗した");
         }
     }
-    encoder.finish().expect("failed to finish");
+    encoder.finish().expect("終了処理に失敗した");
     while let Some(encoded) = encoder.next_frame() {
         if encoded.is_keyframe() {
             keyframe_count += 1;
         }
-        let _data = encoded.data().expect("failed to get encoded data");
+        let _data = encoded.data().expect("エンコードデータの取得に失敗した");
     }
 
     // 30 フレーム / kf_max_dist=5 で先頭含め複数回挿入されるはず
     assert!(
         keyframe_count >= 2,
-        "expected at least 2 keyframes under KeyframeMode::Auto with kf_max_dist=5, got {keyframe_count}"
+        "KeyframeMode::Auto + kf_max_dist=5 では 2 枚以上のキーフレームがあるはず: {keyframe_count} 枚"
     );
 }
 
@@ -470,7 +509,7 @@ fn test_keyframe_mode_fixed_behaves_like_disabled() {
     let mut config = good_quality_config(width, height, RateControlMode::Cbr);
     config.kf_mode = Some(KeyframeMode::Fixed);
 
-    let mut encoder = Encoder::new(config).expect("failed to create encoder");
+    let mut encoder = Encoder::new(config).expect("エンコーダーの生成に失敗した");
     let mut keyframe_count = 0;
 
     for i in 0..num_frames {
@@ -483,25 +522,27 @@ fn test_keyframe_mode_fixed_behaves_like_disabled() {
             u: &u,
             v: &v,
         };
-        encoder.encode(&image, &options).expect("failed to encode");
+        encoder
+            .encode(&image, &options)
+            .expect("エンコードに失敗した");
         while let Some(encoded) = encoder.next_frame() {
             if encoded.is_keyframe() {
                 keyframe_count += 1;
             }
-            let _data = encoded.data().expect("failed to get encoded data");
+            let _data = encoded.data().expect("エンコードデータの取得に失敗した");
         }
     }
-    encoder.finish().expect("failed to finish");
+    encoder.finish().expect("終了処理に失敗した");
     while let Some(encoded) = encoder.next_frame() {
         if encoded.is_keyframe() {
             keyframe_count += 1;
         }
-        let _data = encoded.data().expect("failed to get encoded data");
+        let _data = encoded.data().expect("エンコードデータの取得に失敗した");
     }
 
     assert_eq!(
         keyframe_count, 1,
-        "KeyframeMode::Fixed must behave like Disabled (only the first frame is a keyframe)"
+        "KeyframeMode::Fixed は Disabled と同じ挙動のはず (先頭 1 枚のみキーフレーム)"
     );
 }
 
@@ -539,7 +580,7 @@ fn test_roundtrip_decoder_threads() {
         .collect();
 
     let packets = encode_frames(config, &input_frames);
-    assert!(!packets.is_empty(), "no encoded packets");
+    assert!(!packets.is_empty(), "エンコード結果が空");
 
     let mut dec_config = DecoderConfig::new();
     dec_config.threads = Some(2);
@@ -547,9 +588,9 @@ fn test_roundtrip_decoder_threads() {
     let decoded_frames = decode_frames_with_config(dec_config, &packets);
     assert_eq!(decoded_frames.len(), num_frames);
     for (i, (y, w, h)) in decoded_frames.iter().enumerate() {
-        assert_eq!(*w, 320, "decoded frame {i} width mismatch");
-        assert_eq!(*h, 240, "decoded frame {i} height mismatch");
-        assert!(!y.is_empty(), "decoded frame {i} has empty Y plane");
+        assert_eq!(*w, 320, "フレーム {i}: 幅が一致しない");
+        assert_eq!(*h, 240, "フレーム {i}: 高さが一致しない");
+        assert!(!y.is_empty(), "フレーム {i}: Y プレーンが空");
     }
 }
 
@@ -588,7 +629,7 @@ fn test_roundtrip_lossless() {
     let psnr = psnr_y(&y, &decoded_frames[0].0, width as usize, height as usize);
     assert!(
         psnr == f64::INFINITY,
-        "lossless mode: PSNR {psnr:.1} dB, expected INFINITY"
+        "ロスレスのはずが PSNR {psnr:.1} dB (INFINITY を期待)"
     );
 }
 
@@ -617,7 +658,7 @@ fn test_supported_codecs() {
             assert!(profiles.contains(&shiguredo_aom::Av1EncodingProfile::Profile0));
         }
         shiguredo_aom::EncodingProfiles::Unsupported => {
-            panic!("encoding profiles should not be Unsupported");
+            panic!("エンコードプロファイルが Unsupported のはずがない");
         }
     }
 }
@@ -641,7 +682,7 @@ fn test_reconfigure_target_bitrate_midstream() {
     let mut config = realtime_config(width, height, RateControlMode::Cbr);
     config.rc_target_bitrate = 5000;
 
-    let mut encoder = Encoder::new(config).expect("failed to create encoder");
+    let mut encoder = Encoder::new(config).expect("エンコーダーの生成に失敗した");
     let options = EncodeOptions {
         force_keyframe: false,
     };
@@ -652,7 +693,7 @@ fn test_reconfigure_target_bitrate_midstream() {
 
     encoder
         .reconfigure(rc_bitrate(200))
-        .expect("failed to reconfigure");
+        .expect("再設定に失敗した");
 
     drive_dummy(
         &mut encoder,
@@ -669,7 +710,7 @@ fn test_reconfigure_target_bitrate_midstream() {
     let after_bytes = total_bytes(after);
     assert!(
         after_bytes * 2 < before_bytes,
-        "expected after_bytes * 2 < before_bytes (bitrate reconfigure had no effect): before={before_bytes}, after={after_bytes}",
+        "後半バイト数が前半より明確に小さいはず (再設定が効いていない): 前半={before_bytes}, 後半={after_bytes}",
     );
     assert_eq!(decode_frames(&packets).len(), half * 2);
 }
@@ -682,11 +723,11 @@ fn test_reconfigure_immediately_after_new() {
     let height = 240;
     let num_frames = 4;
     let config = realtime_config(width, height, RateControlMode::Cbr);
-    let mut encoder = Encoder::new(config).expect("failed to create encoder");
+    let mut encoder = Encoder::new(config).expect("エンコーダーの生成に失敗した");
 
     encoder
         .reconfigure(rc_bitrate(500))
-        .expect("failed to reconfigure");
+        .expect("再設定に失敗した");
 
     let options = EncodeOptions {
         force_keyframe: false,
@@ -712,7 +753,7 @@ fn test_reconfigure_while_iter_active() {
     let width = 320;
     let height = 240;
     let config = realtime_config(width, height, RateControlMode::Cbr);
-    let mut encoder = Encoder::new(config).expect("failed to create encoder");
+    let mut encoder = Encoder::new(config).expect("エンコーダーの生成に失敗した");
 
     // realtime モードでは最初の encode から 1 フレーム以上出力されるため、
     // force_keyframe は不要
@@ -725,23 +766,25 @@ fn test_reconfigure_while_iter_active() {
         u: &u,
         v: &v,
     };
-    encoder.encode(&image, &options).expect("failed to encode");
+    encoder
+        .encode(&image, &options)
+        .expect("エンコードに失敗した");
 
     // 1 フレームだけ取り出して iter を非 NULL 状態にする
     let _ = encoder
         .next_frame()
-        .expect("expected at least one encoded frame")
+        .expect("1 枚以上のエンコード結果があるはず")
         .data()
-        .expect("failed to get encoded data")
+        .expect("エンコードデータの取得に失敗した")
         .to_vec();
 
     let err = encoder
         .reconfigure(rc_bitrate(2000))
-        .expect_err("reconfigure should fail while iter is active");
+        .expect_err("取り出し中に再設定したらエラーになるはず");
     assert!(
         err.to_string()
             .starts_with("shiguredo_aom::Encoder::reconfigure()"),
-        "unexpected error message: {err}"
+        "予期しないエラーメッセージ: {err}"
     );
 }
 
@@ -758,7 +801,7 @@ fn test_reconfigure_after_finish_while_iter_active() {
     let height = 240;
     let mut config = good_quality_config(width, height, RateControlMode::Vbr);
     config.g_lag_in_frames = Some(4);
-    let mut encoder = Encoder::new(config).expect("failed to create encoder");
+    let mut encoder = Encoder::new(config).expect("エンコーダーの生成に失敗した");
     let options = EncodeOptions {
         force_keyframe: false,
     };
@@ -766,23 +809,23 @@ fn test_reconfigure_after_finish_while_iter_active() {
     let mut packets = Vec::new();
     drive_dummy(&mut encoder, &options, width, height, 0..6, &mut packets);
 
-    encoder.finish().expect("failed to finish");
+    encoder.finish().expect("終了処理に失敗した");
 
     // finish 後の残りフレームを 1 つだけ取り出して iter を非 NULL 状態にする
     let _ = encoder
         .next_frame()
-        .expect("expected at least one encoded frame after finish")
+        .expect("finish 後に 1 枚以上のエンコード結果があるはず")
         .data()
-        .expect("failed to get encoded data")
+        .expect("エンコードデータの取得に失敗した")
         .to_vec();
 
     let err = encoder
         .reconfigure(rc_bitrate(2000))
-        .expect_err("reconfigure should fail while iter is active after finish");
+        .expect_err("finish 後の取り出し中に再設定したらエラーになるはず");
     assert!(
         err.to_string()
             .starts_with("shiguredo_aom::Encoder::reconfigure()"),
-        "unexpected error message: {err}"
+        "予期しないエラーメッセージ: {err}"
     );
 }
 
@@ -797,7 +840,7 @@ fn test_reconfigure_target_bitrate_multi_switch() {
     let num_frames = bitrates.len() * frames_per_segment;
 
     let config = realtime_config(width, height, RateControlMode::Cbr);
-    let mut encoder = Encoder::new(config).expect("failed to create encoder");
+    let mut encoder = Encoder::new(config).expect("エンコーダーの生成に失敗した");
     let options = EncodeOptions {
         force_keyframe: false,
     };
@@ -806,7 +849,7 @@ fn test_reconfigure_target_bitrate_multi_switch() {
     for (segment, &bitrate) in bitrates.iter().enumerate() {
         encoder
             .reconfigure(rc_bitrate(bitrate))
-            .expect("failed to reconfigure");
+            .expect("再設定に失敗した");
 
         let begin = segment * frames_per_segment;
         drive_dummy(
@@ -836,7 +879,7 @@ fn test_reconfigure_target_bitrate_vbr() {
     let num_frames = 12;
 
     let config = realtime_config(width, height, RateControlMode::Vbr);
-    let mut encoder = Encoder::new(config).expect("failed to create encoder");
+    let mut encoder = Encoder::new(config).expect("エンコーダーの生成に失敗した");
     let options = EncodeOptions {
         force_keyframe: false,
     };
@@ -846,7 +889,7 @@ fn test_reconfigure_target_bitrate_vbr() {
     drive_dummy(&mut encoder, &options, width, height, 0..half, &mut packets);
     encoder
         .reconfigure(rc_bitrate(2000))
-        .expect("failed to reconfigure");
+        .expect("再設定に失敗した");
     drive_dummy(
         &mut encoder,
         &options,
@@ -869,7 +912,7 @@ fn test_reconfigure_state_unchanged_on_failure() {
     let width = 320;
     let height = 240;
     let config = realtime_config(width, height, RateControlMode::Cbr);
-    let mut encoder = Encoder::new(config).expect("failed to create encoder");
+    let mut encoder = Encoder::new(config).expect("エンコーダーの生成に失敗した");
     let options = EncodeOptions {
         force_keyframe: false,
     };
@@ -878,27 +921,27 @@ fn test_reconfigure_state_unchanged_on_failure() {
 
     let err = encoder
         .reconfigure(rc_bitrate(oor_bitrate))
-        .expect_err("expected reconfigure to fail with out-of-range bitrate");
+        .expect_err("範囲外ビットレートでの再設定は失敗するはず");
     assert!(
         err.to_string().starts_with("aom_codec_enc_config_set()"),
-        "unexpected error message: {err}"
+        "予期しないエラーメッセージ: {err}"
     );
 
     // 同じ範囲外値を再度渡しても同様に失敗する (= self.cfg が壊れていない)
     let err_retry = encoder
         .reconfigure(rc_bitrate(oor_bitrate))
-        .expect_err("expected the second out-of-range reconfigure to also fail");
+        .expect_err("2 回目の範囲外ビットレートでの再設定も失敗するはず");
     assert!(
         err_retry
             .to_string()
             .starts_with("aom_codec_enc_config_set()"),
-        "unexpected error message: {err_retry}"
+        "予期しないエラーメッセージ: {err_retry}"
     );
 
     // 妥当な値での reconfigure が成功し、エンコード・デコードまで完走する
     encoder
         .reconfigure(rc_bitrate(1500))
-        .expect("reconfigure with valid bitrate should succeed after a failed call");
+        .expect("失敗後の妥当なビットレートでの再設定は成功するはず");
 
     let mut packets: Vec<Vec<u8>> = Vec::new();
     drive_dummy(&mut encoder, &options, width, height, 0..3, &mut packets);
@@ -915,7 +958,7 @@ fn test_reconfigure_followed_by_forced_keyframe() {
     let width = 320;
     let height = 240;
     let config = realtime_config(width, height, RateControlMode::Cbr);
-    let mut encoder = Encoder::new(config).expect("failed to create encoder");
+    let mut encoder = Encoder::new(config).expect("エンコーダーの生成に失敗した");
     let options_p = EncodeOptions {
         force_keyframe: false,
     };
@@ -928,7 +971,7 @@ fn test_reconfigure_followed_by_forced_keyframe() {
 
     encoder
         .reconfigure(rc_bitrate(2000))
-        .expect("failed to reconfigure");
+        .expect("再設定に失敗した");
 
     // reconfigure 直後にキーフレームを強制する
     let (y, u, v) = generate_dummy_i420(width as usize, height as usize, 3);
@@ -939,17 +982,22 @@ fn test_reconfigure_followed_by_forced_keyframe() {
     };
     encoder
         .encode(&image, &options_key)
-        .expect("failed to encode keyframe after reconfigure");
+        .expect("再設定直後のキーフレームのエンコードに失敗した");
     let mut keyframe_seen = false;
     while let Some(encoded) = encoder.next_frame() {
         if encoded.is_keyframe() {
             keyframe_seen = true;
         }
-        packets.push(encoded.data().expect("failed to get encoded data").to_vec());
+        packets.push(
+            encoded
+                .data()
+                .expect("エンコードデータの取得に失敗した")
+                .to_vec(),
+        );
     }
     assert!(
         keyframe_seen,
-        "force_keyframe = true did not produce a keyframe immediately after reconfigure"
+        "force_keyframe = true なのに再設定直後にキーフレームが出力されない"
     );
 
     drive_dummy(&mut encoder, &options_p, width, height, 4..6, &mut packets);
@@ -974,7 +1022,7 @@ fn test_reconfigure_psnr_midstream() {
 
     let (input_y, input_u, input_v) = generate_colorbar_i420(width, height);
 
-    let mut encoder = Encoder::new(config).expect("failed to create encoder");
+    let mut encoder = Encoder::new(config).expect("エンコーダーの生成に失敗した");
     let options = EncodeOptions {
         force_keyframe: false,
     };
@@ -984,16 +1032,23 @@ fn test_reconfigure_psnr_midstream() {
         if i == num_frames / 2 {
             encoder
                 .reconfigure(rc_bitrate(1500))
-                .expect("failed to reconfigure");
+                .expect("再設定に失敗した");
         }
         let image = ImageData::I420 {
             y: &input_y,
             u: &input_u,
             v: &input_v,
         };
-        encoder.encode(&image, &options).expect("failed to encode");
+        encoder
+            .encode(&image, &options)
+            .expect("エンコードに失敗した");
         while let Some(encoded) = encoder.next_frame() {
-            packets.push(encoded.data().expect("failed to get encoded data").to_vec());
+            packets.push(
+                encoded
+                    .data()
+                    .expect("エンコードデータの取得に失敗した")
+                    .to_vec(),
+            );
         }
     }
     drain_after_finish(&mut encoder, &mut packets);
@@ -1002,6 +1057,6 @@ fn test_reconfigure_psnr_midstream() {
     assert_eq!(decoded.len(), num_frames);
     for (i, (y, _, _)) in decoded.iter().enumerate() {
         let psnr = psnr_y(&input_y, y, width, height);
-        assert!(psnr >= 20.0, "frame {i}: PSNR {psnr:.1} dB < 20.0 dB");
+        assert!(psnr >= 20.0, "フレーム {i}: PSNR {psnr:.1} dB < 20.0 dB");
     }
 }

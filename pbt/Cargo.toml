@@ -2,6 +2,7 @@
 name = "shiguredo_aom_pbt"
 version = "0.0.0"
 edition = "2024"
+rust-version = "1.93"
 publish = false
 
 [dependencies]
@@ -10,4 +11,4 @@ shiguredo_aom = { path = "..", features = ["source-build"] }
 
 [dev-dependencies]
 # Property-Based Testing
-proptest = "1.11"
+noprop = "0.2"
