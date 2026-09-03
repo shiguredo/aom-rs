@@ -37,6 +37,7 @@ Please read <https://github.com/shiguredo/oss> before use.
 - S-Frame (スイッチフレーム) サポート
 - デノイズ / フィルムグレイン
 - per-frame のキーフレーム強制
+- エンコード途中のターゲットビットレート変更 (`Encoder::reconfigure`)
 - シンボル書き換えによる他ライブラリとの衝突回避 (`shiguredo_aom_` プレフィックス付与)
 - prebuilt バイナリによる高速ビルド (デフォルト)
 - ソースからのビルドも可能 (`--features source-build`)
@@ -194,6 +195,21 @@ config.g_profile = 0;
 - `I420` / `Yv12` / `Nv12` は profile 0
 - `I422` は profile 2
 - `I444` は profile 1 (`monochrome: Some(true)` なら profile 0 も可)
+
+### エンコード途中のビットレート変更
+
+`Encoder::reconfigure()` でエンコーダーを破棄せずにターゲットビットレートを変更できます (libwebrtc の `LibaomAv1Encoder::SetRates` 相当)。タイムベースは初期化時に固定し、ランタイムでは変更しません。
+
+```rust
+use shiguredo_aom::ReconfigureParams;
+
+// 500 kbps から 2000 kbps に切り替え
+encoder.reconfigure(ReconfigureParams {
+    rc_target_bitrate: Some(2000), // kbps
+})?;
+```
+
+完全な例は `examples/midstream_reconfigure.rs` を参照してください。
 
 ### デコード
 
@@ -519,6 +535,14 @@ while let Some(frame) = decoder.next_frame() {
 | フィールド | 型 | デフォルト | 説明 |
 |---|---|---|---|
 | `force_keyframe` | `bool` | false | キーフレームを強制する |
+
+### `ReconfigureParams`
+
+`Encoder::reconfigure()` でランタイムに変更可能な設定のみを保持します (`Some` を指定したフィールドだけが反映されます)。
+
+| フィールド | 型 | 説明 |
+|---|---|---|
+| `rc_target_bitrate` | `Option<u32>` | ターゲットビットレート (kbps) |
 
 ### `DecoderConfig`
 
