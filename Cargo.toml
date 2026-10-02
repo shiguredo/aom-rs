@@ -25,6 +25,8 @@ members = ["pbt"]
 [build-dependencies]
 # libaom ヘッダから Rust FFI バインディングを生成する
 bindgen = "0.72"
+# cmake クレートのコンパイラ判定に Android NDK の C / C++ コンパイラを指定する
+cc = "1.4"
 # libaom を CMake でビルドする
 shiguredo_cmake = "4.4"
 # package.metadata.external-dependencies を読む
