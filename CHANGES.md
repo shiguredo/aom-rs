@@ -11,6 +11,9 @@
 
 ## develop
 
+- [ADD] iOS 実機 / シミュレーターおよび Android (arm64-v8a / x86_64) 向けのビルド、CI、prebuilt 対応を追加する
+  - @voluntas
+
 ## 2026.2.0
 
 **リリース日**: 2026-09-03
