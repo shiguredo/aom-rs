@@ -1,7 +1,7 @@
 # iOS / Android 向けの prebuilt を追加する
 
 - Created: 2026-10-03
-- Completed: {YYYY-MM-DD}
+- Completed: 2026-10-03
 - Branch: feature/add-mobile-prebuilt
 - Polished: {YYYY-MM-DD}
 
@@ -59,3 +59,22 @@
 - GitHub Actions の CI でモバイル向けビルドとリンクの検証が通る
 - 次回リリースでアーカイブとチェックサムのアップロード、公開された prebuilt の自動選択とリンクの検証、crates.io への公開の順に進むワークフローを構成し、検証に失敗した場合は `publish` を開始しない
 - 既存の単体テスト、PBT、フォーマット、Clippy が通る
+
+## 解決方法
+
+- `build.rs` に `configure_mobile_build` を追加し、iOS は Xcode SDK のパス、Android は NDK のツールチェーンを使う CMake 設定と、bindgen に渡す clang 引数を指定した
+- iOS は `CMAKE_SYSTEM_NAME=Darwin` と解決済みの SDK パスで構成し、`AOM_TARGET_CPU` を明示して SIMD を有効にした
+- Android は arm64-v8a と x86_64 の 2 ABI に対応し、`ANDROID_STL=c++_static` と `CONFIG_PIC=1` を指定した
+- `get_target_platform` に iOS / Android の prebuilt 名を追加し、`rewrite_symbols` の Mach-O 判定を Apple プラットフォーム判定に変更した
+- `.github/workflows/mobile.yml` を追加して CI とリリースで共用し、`ci.yml` の `mobile` ジョブと `release.yml` の `build-mobile-prebuilt` ジョブから呼び出すようにした
+- `README.md` に iOS / Android 向けの prebuilt とソースビルドの記述を追加し、`CHANGES.md` に [ADD] を記載した
+- `build-dependencies` に `cc` を追加した
+
+### 検証結果
+
+- iOS 3 ターゲットと Android 2 ABI でソースビルドと Rust テスト実行ファイルのリンクに成功した
+- 全定義済み外部シンボルが、Mach-O 固有の先頭 `_` を除いて `shiguredo_aom_` プレフィックスを持つことを確認した
+- arm64 で `HAVE_NEON`、x86_64 で `HAVE_SSE2` / `HAVE_AVX2` が有効になっていることを確認した
+- ワークフローのアーカイブ生成処理を使い、SHA256 の一致と展開物の一致を確認した
+- ホストの全テスト、Clippy、フォーマット、prek のフック、actionlint が通過した
+- GitHub Actions の CI はこの作業ブランチの PR で実行し、全ジョブの通過後にマージする
