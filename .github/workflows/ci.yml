@@ -76,6 +76,12 @@ jobs:
           echo "C:\Program Files\NASM" >> $env:GITHUB_PATH
       - run: cargo test --workspace --features source-build
 
+  mobile:
+    name: Mobile prebuilt
+    permissions:
+      contents: read
+    uses: ./.github/workflows/mobile.yml
+
   # docs.rs 向けビルド確認
   docs-rs:
     name: docs.rs
@@ -94,6 +100,7 @@ jobs:
       - fmt-clippy
       - test
       - test-windows
+      - mobile
       - docs-rs
     runs-on: ubuntu-slim
     timeout-minutes: 5

@@ -29,6 +29,10 @@ fn main() {
     println!("cargo::rerun-if-env-changed=CARGO_FEATURE_SOURCE_BUILD");
     println!("cargo::rerun-if-env-changed=LIBAOM_TARGET");
     println!("cargo::rerun-if-env-changed=DOCS_RS");
+    println!("cargo::rerun-if-env-changed=IPHONEOS_DEPLOYMENT_TARGET");
+    println!("cargo::rerun-if-env-changed=DEVELOPER_DIR");
+    println!("cargo::rerun-if-env-changed=ANDROID_NDK_HOME");
+    println!("cargo::rerun-if-env-changed=ANDROID_PLATFORM");
     // docs.rs 向けダミー bindings か実 bindings かで発火する lint が異なるため、
     // sys.rs の lint 抑止を切り替える cfg を用意する
     println!("cargo::rustc-check-cfg=cfg(docs_rs)");
@@ -267,15 +271,19 @@ fn build_from_source(out_dir: &Path, output_bindings_path: &Path) -> PathBuf {
 
     // CMake でソースからビルドする
     let src_dir = out_build_dir.join(LIB_NAME);
-    let install_dir = shiguredo_cmake::Config::new(&src_dir)
+    let mut cmake_config = shiguredo_cmake::Config::new(&src_dir);
+    cmake_config
         .define("BUILD_SHARED_LIBS", "OFF")
         .define("ENABLE_TESTS", "OFF")
         .define("ENABLE_EXAMPLES", "OFF")
         .define("ENABLE_TOOLS", "OFF")
         .define("ENABLE_DOCS", "OFF")
         .define("CONFIG_AV1_HIGHBITDEPTH", "1")
-        .profile("Release")
-        .build();
+        .profile("Release");
+
+    // モバイル向けの SDK、ABI、最小 OS バージョンを指定する
+    let clang_args = configure_mobile_build(&mut cmake_config);
+    let install_dir = cmake_config.build();
 
     let input_header_dir = install_dir.join("include/aom/");
     let output_lib_dir = install_dir.join("lib/");
@@ -293,6 +301,7 @@ fn build_from_source(out_dir: &Path, output_bindings_path: &Path) -> PathBuf {
         .header(input_header_dir.join("aom_encoder.h").display().to_string())
         .header(input_header_dir.join("aom_decoder.h").display().to_string())
         .clang_arg(format!("-I{}", install_dir.join("include").display()))
+        .clang_args(clang_args)
         .parse_callbacks(Box::new(callbacks))
         .generate()
         .expect("failed to generate bindings")
@@ -300,6 +309,135 @@ fn build_from_source(out_dir: &Path, output_bindings_path: &Path) -> PathBuf {
         .expect("failed to write bindings");
 
     output_lib_dir
+}
+
+/// モバイル向けの CMake と bindgen に同じ SDK、ABI、最小 OS バージョンを指定する
+fn configure_mobile_build(config: &mut shiguredo_cmake::Config) -> Vec<String> {
+    let target_os = env::var("CARGO_CFG_TARGET_OS").expect("CARGO_CFG_TARGET_OS is not set");
+    let target = env::var("TARGET").expect("TARGET is not set");
+
+    match target_os.as_str() {
+        "ios" => {
+            // Rust のターゲットで実機とシミュレーターを区別する。
+            // 根拠: rustc book の *-apple-ios / Requirements。仕様は将来変更される可能性がある。
+            let (sdk, arch, simulator_suffix, aom_target_cpu, default_deployment_target) =
+                match target.as_str() {
+                    "aarch64-apple-ios" => ("iphoneos", "arm64", "", "arm64", "13.0"),
+                    // arm64 シミュレーターは Rust と Clang のターゲット下限が iOS 14.0。
+                    // 根拠: Rust 1.93 の OSVersion::minimum_deployment_target。
+                    // ターゲットの下限は将来変更される可能性がある。
+                    "aarch64-apple-ios-sim" => {
+                        ("iphonesimulator", "arm64", "-simulator", "arm64", "14.0")
+                    }
+                    "x86_64-apple-ios" => {
+                        ("iphonesimulator", "x86_64", "-simulator", "x86_64", "13.0")
+                    }
+                    _ => panic!("unsupported iOS target: {target}"),
+                };
+            let deployment_target = env::var("IPHONEOS_DEPLOYMENT_TARGET")
+                .unwrap_or_else(|_| default_deployment_target.to_string());
+            let output = Command::new("xcrun")
+                .args(["--sdk", sdk, "--show-sdk-path"])
+                .output()
+                .expect("failed to run xcrun. Ensure Xcode is installed");
+            if !output.status.success() {
+                panic!("failed to find iOS SDK: {sdk}");
+            }
+            let sdk_path = String::from_utf8(output.stdout).expect("invalid iOS SDK path");
+            let sdk_path = sdk_path.trim();
+
+            // libaom の CMake は AOM_TARGET_SYSTEM が Darwin のときだけ ARM アセンブリの
+            // コンパイラと x86_64 の NASM オブジェクト形式 (macho64) を切り替える。
+            // iOS でも Darwin として構成し、SDK とアーキテクチャで対象を分ける。
+            // 根拠: libaom v3.14.1 の cmake/aom_configure.cmake と cmake/aom_optimization.cmake。
+            // 実装は将来変更される可能性がある。
+            //
+            // cc クレートの既定フラグと CMake の SDK 選択が競合しないよう、
+            // コンパイラのターゲット設定は CMake に任せる。
+            config
+                .no_default_flags(true)
+                .define("CMAKE_SYSTEM_NAME", "Darwin")
+                .define("CMAKE_OSX_SYSROOT", sdk_path)
+                .define("CMAKE_OSX_ARCHITECTURES", arch)
+                .define("CMAKE_OSX_DEPLOYMENT_TARGET", &deployment_target)
+                // Darwin ホストでは CMAKE_SYSTEM_NAME が同じでも CMAKE_SYSTEM_PROCESSOR が
+                // 空になり、libaom が CPU を generic と判定して SIMD が無効になる。
+                // 根拠: libaom v3.14.1 の cmake/aom_configure.cmake の CPU 判定。
+                // 実装は将来変更される可能性がある。
+                .define("AOM_TARGET_CPU", aom_target_cpu);
+
+            vec![
+                format!("--target={arch}-apple-ios{deployment_target}{simulator_suffix}"),
+                "-isysroot".to_string(),
+                sdk_path.to_string(),
+            ]
+        }
+        "android" => {
+            let ndk = PathBuf::from(
+                env::var_os("ANDROID_NDK_HOME")
+                    .expect("ANDROID_NDK_HOME is not set. Set it to the Android NDK directory"),
+            );
+            let (abi, clang_target) = match target.as_str() {
+                "aarch64-linux-android" => ("arm64-v8a", "aarch64-linux-android"),
+                "x86_64-linux-android" => ("x86_64", "x86_64-linux-android"),
+                _ => panic!("unsupported Android target: {target}"),
+            };
+            let platform = env::var("ANDROID_PLATFORM").unwrap_or_else(|_| "21".to_string());
+            // bindgen の Clang ターゲットには API 名ではなく数値が必要なため、
+            // CMake にも同じ数値を渡して NDK の API 名解決との差異を防ぐ。
+            let api_level = platform
+                .strip_prefix("android-")
+                .unwrap_or(&platform)
+                .parse::<u32>()
+                .expect("ANDROID_PLATFORM must be a numeric API level or android-<API level>");
+            // NDK が下限未満の API level を引き上げると bindgen と食い違うため、ここで拒否する。
+            assert!(
+                api_level >= 21,
+                "ANDROID_PLATFORM must be at least API level 21"
+            );
+            let host_tag = match env::consts::OS {
+                "linux" => "linux-x86_64",
+                "macos" => "darwin-x86_64",
+                "windows" => "windows-x86_64",
+                os => panic!("unsupported Android NDK host: {os}"),
+            };
+            let toolchain = ndk.join("toolchains/llvm/prebuilt").join(host_tag);
+            let sysroot = toolchain.join("sysroot");
+
+            // cmake クレートもコンパイラ種別を調べるため、PATH 上のターゲット別
+            // ラッパーを探索させずに NDK の実際のコンパイラを指定する。
+            let mut c_config = cc::Build::new();
+            c_config.compiler(toolchain.join("bin").join(exe_name("clang")));
+            let mut cxx_config = cc::Build::new();
+            cxx_config.compiler(toolchain.join("bin").join(exe_name("clang++")));
+
+            // NDK が提供するツールチェーンを使い、CMake 独自の NDK 検出を避ける。
+            // 根拠: Android NDK ガイドの CMake / The CMake toolchain file。
+            // SDK の構成や引数は将来変更される可能性がある。
+            config
+                .init_c_cfg(c_config)
+                .init_cxx_cfg(cxx_config)
+                .define(
+                    "CMAKE_TOOLCHAIN_FILE",
+                    ndk.join("build/cmake/android.toolchain.cmake"),
+                )
+                .define("ANDROID_ABI", abi)
+                .define("ANDROID_PLATFORM", api_level.to_string())
+                // libaom は補助ライブラリ aom_av1_rc に C++ ソース (av1/ratectrl_rtc.cc)
+                // を含むため、NDK の C++ 標準ライブラリを指定してビルドできるようにする。
+                // 成果物の libaom.a 自体には C++ のオブジェクトは含まれない。
+                .define("ANDROID_STL", "c++_static")
+                // Android アプリの共有ライブラリに静的リンクするため PIC を有効にする。
+                // NASM のアセンブリにも -DPIC が渡り、テキスト再配置を防げる。
+                .define("CONFIG_PIC", "1");
+
+            vec![
+                format!("--target={clang_target}{api_level}"),
+                format!("--sysroot={}", sysroot.display()),
+            ]
+        }
+        _ => Vec::new(),
+    }
 }
 
 // --- シンボル書き換え ---
@@ -311,13 +449,13 @@ fn build_from_source(out_dir: &Path, output_bindings_path: &Path) -> PathBuf {
 // rust-toolchain.toml に components = ["llvm-tools"] の記載が必要。
 //
 // プラットフォームごとのシンボル形式の違い:
-//   - macOS (Mach-O): シンボル先頭に `_` が付く (例: _aom_codec_encode)
+//   - macOS / iOS (Mach-O): シンボル先頭に `_` が付く (例: _aom_codec_encode)
 //   - Linux (ELF): 先頭 `_` なし (例: aom_codec_encode)
 //   - Windows x64 (COFF): 先頭 `_` なし (例: aom_codec_encode)
 //
 // bindgen の generated_link_name_override は返した文字列に \u{1} プレフィックスを
 // 自動付加する。\u{1} はコンパイラに「この名前をそのまま使え（マングリングするな）」と
-// 指示するため、プラットフォーム固有のシンボル名（macOS なら _shiguredo_aom_codec_encode）を
+// 指示するため、プラットフォーム固有のシンボル名（macOS / iOS なら _shiguredo_aom_codec_encode）を
 // そのまま返す必要がある。
 
 /// llvm-nm / llvm-objcopy のパスを保持する
@@ -334,14 +472,14 @@ struct LlvmTools {
 struct SymbolRenameMaps {
     /// llvm-objcopy の --redefine-syms 用マップ
     ///
-    /// キー: 元のシンボル名 (例: macOS なら _aom_codec_encode、Linux なら aom_codec_encode)
-    /// 値: 書き換え後のシンボル名 (例: macOS なら _shiguredo_aom_codec_encode)
+    /// キー: 元のシンボル名 (例: macOS / iOS なら _aom_codec_encode、Linux なら aom_codec_encode)
+    /// 値: 書き換え後のシンボル名 (例: macOS / iOS なら _shiguredo_aom_codec_encode)
     objcopy_map: HashMap<String, String>,
 
     /// bindgen の #[link_name] 用マップ
     ///
     /// キー: C シンボル名 (プラットフォーム非依存、例: aom_codec_encode)
-    /// 値: 書き換え後のシンボル名 (プラットフォーム依存、例: macOS なら _shiguredo_aom_codec_encode)
+    /// 値: 書き換え後のシンボル名 (プラットフォーム依存、例: macOS / iOS なら _shiguredo_aom_codec_encode)
     ///
     /// bindgen は \u{1} プレフィックスを付加してマングリングを抑制するため、
     /// 値にはプラットフォーム固有のシンボル名を格納する必要がある。
@@ -384,10 +522,10 @@ fn rewrite_symbols(lib_dir: &Path, out_dir: &Path) -> SymbolLinkNameCallbacks {
     let tools = discover_llvm_tools();
     let lib_path = find_static_library(lib_dir);
 
-    // macOS の Mach-O ではシンボル先頭に `_` が付くため、
+    // Apple プラットフォームの Mach-O ではシンボル先頭に `_` が付くため、
     // プラットフォーム判定してリネームマップの生成時に考慮する
-    let is_macos = env::var("CARGO_CFG_TARGET_OS")
-        .map(|v| v == "macos")
+    let is_macho = env::var("CARGO_CFG_TARGET_VENDOR")
+        .map(|v| v == "apple")
         .unwrap_or(false);
 
     // シンボル名の変換ルール
@@ -407,7 +545,7 @@ fn rewrite_symbols(lib_dir: &Path, out_dir: &Path) -> SymbolLinkNameCallbacks {
 
     // 全定義済み外部シンボルを収集してリネームマップを生成する
     let symbols = collect_defined_external_symbols(&tools.nm, &lib_path);
-    let maps = build_symbol_rename_maps(&symbols, is_macos, &rename_symbol);
+    let maps = build_symbol_rename_maps(&symbols, is_macho, &rename_symbol);
 
     // マップファイルを書き出してシンボルを書き換える
     let map_file = out_dir.join("symbol_rename_map.txt");
@@ -542,7 +680,7 @@ fn collect_defined_external_symbols(nm_path: &Path, lib_path: &Path) -> Vec<Stri
 /// llvm-nm の --format=just-symbols 出力にはオブジェクトファイル名 (av1_cx_iface.c.o: 等) も
 /// 含まれるため、この関数で C 識別子のみをフィルタリングする。
 ///
-/// macOS の Mach-O ではシンボル先頭に `_` が付くため、`_` で始まる文字列も受け入れる。
+/// Apple プラットフォームの Mach-O ではシンボル先頭に `_` が付くため、`_` で始まる文字列も受け入れる。
 ///
 /// libaom の NASM ソースは cglobal_label を使用しておらず、ドット付きの
 /// extern シンボルは生成されないため、`.` は許可しない。
@@ -560,7 +698,7 @@ fn is_c_identifier(s: &str) -> bool {
 /// 2 つのマップを生成する理由:
 ///
 /// objcopy_map: ライブラリバイナリ内の実シンボル名を書き換えるためのマップ。
-///   macOS では _aom_codec_encode → _shiguredo_aom_codec_encode のようにプラットフォーム固有の
+///   macOS / iOS では _aom_codec_encode → _shiguredo_aom_codec_encode のようにプラットフォーム固有の
 ///   `_` プレフィックスを含む形で管理する。
 ///
 /// bindgen_map: Rust バインディングの #[link_name] に使うマップ。
@@ -570,7 +708,7 @@ fn is_c_identifier(s: &str) -> bool {
 ///   抑制するため、プラットフォーム固有の名前を直接返す必要がある。
 fn build_symbol_rename_maps(
     symbols: &[String],
-    is_macos: bool,
+    is_macho: bool,
     rename_symbol: &dyn Fn(&str) -> Option<String>,
 ) -> SymbolRenameMaps {
     let mut objcopy_map = HashMap::new();
@@ -578,9 +716,9 @@ fn build_symbol_rename_maps(
 
     for sym in symbols {
         // プラットフォーム固有のプレフィックスを除去して C シンボル名を取得する
-        //   macOS: _aom_codec_encode → aom_codec_encode
+        //   macOS / iOS: _aom_codec_encode → aom_codec_encode
         //   Linux/Windows: aom_codec_encode → aom_codec_encode (変化なし)
-        let c_name = if is_macos {
+        let c_name = if is_macho {
             sym.strip_prefix('_').unwrap_or(sym)
         } else {
             sym.as_str()
@@ -588,9 +726,9 @@ fn build_symbol_rename_maps(
 
         if let Some(new_c_name) = rename_symbol(c_name) {
             // objcopy 用: プラットフォーム固有のプレフィックスを再付与する
-            //   macOS: shiguredo_aom_codec_encode → _shiguredo_aom_codec_encode
+            //   macOS / iOS: shiguredo_aom_codec_encode → _shiguredo_aom_codec_encode
             //   Linux/Windows: shiguredo_aom_codec_encode → shiguredo_aom_codec_encode (変化なし)
-            let new_sym = if is_macos {
+            let new_sym = if is_macho {
                 format!("_{new_c_name}")
             } else {
                 new_c_name.clone()
@@ -641,7 +779,7 @@ fn rewrite_archive_symbols(objcopy_path: &Path, lib_path: &Path, map_file: &Path
 
 // --- 既存のヘルパー関数 ---
 
-// CARGO_CFG_TARGET_OS + CARGO_CFG_TARGET_ARCH からプラットフォーム名を生成する
+// Rust のモバイルターゲット、または OS とアーキテクチャからプラットフォーム名を生成する
 fn get_target_platform() -> String {
     if let Ok(target) = env::var("LIBAOM_TARGET") {
         return target;
@@ -649,6 +787,21 @@ fn get_target_platform() -> String {
 
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+    let rust_target = env::var("TARGET").expect("TARGET is not set");
+
+    // 同じ OS とアーキテクチャでも Catalyst や別の ABI は prebuilt と互換にならない。
+    // prebuilt と一致するターゲットだけを受け入れ、異なる ABI への誤リンクを防ぐ。
+    if target_os == "ios" || target_os == "android" {
+        return match rust_target.as_str() {
+            "aarch64-apple-ios" => "ios_arm64",
+            "aarch64-apple-ios-sim" => "ios-sim_arm64",
+            "x86_64-apple-ios" => "ios-sim_x86_64",
+            "aarch64-linux-android" => "android_arm64",
+            "x86_64-linux-android" => "android_x86_64",
+            _ => panic!("unsupported mobile target: {rust_target}"),
+        }
+        .to_string();
+    }
 
     match (target_os.as_str(), target_arch.as_str()) {
         ("linux", "x86_64") => format!("{}_x86_64", detect_linux_distro()),
