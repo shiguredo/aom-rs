@@ -47,10 +47,9 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # ツールチェーンは rust-toolchain.toml で MSRV に固定している
       - name: Set up Rust target
-        run: |
-          rustup update stable
-          rustup target add "$RUST_TARGET"
+        run: rustup target add "$RUST_TARGET"
 
       # build.rs の取得先とアップロード先が同じリリースであることを保証する。
       - name: Verify release version

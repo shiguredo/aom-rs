@@ -11,6 +11,14 @@
 
 ## develop
 
+### misc
+
+- [UPDATE] `rust-toolchain.toml` の channel を MSRV (1.93) に固定し、CI も同ツールチェーンで実行する
+  - @voluntas
+- [UPDATE] CI の runner を shiguredo-github-actions 規約に合わせる
+  - `windows-2025` を `windows-2025-vs2026` に、`ubuntu-latest` を `ubuntu-slim` に変更する
+  - @voluntas
+
 ## 2026.3.0
 
 **リリース日**: 2026-10-03
