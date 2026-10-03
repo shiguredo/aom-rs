@@ -17,6 +17,8 @@
 
 - [ADD] iOS 実機 / シミュレーターおよび Android (arm64-v8a / x86_64) 向けのビルド、CI、prebuilt 対応を追加する
   - @voluntas
+- [UPDATE] libaom を v3.14.1 から v3.15.1 に更新する
+  - @voluntas
 
 ## 2026.2.0
 

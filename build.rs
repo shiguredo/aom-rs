@@ -62,7 +62,7 @@ fn main() {
         //
         // ダミー bindings は build/dummy_bindings.rs に置き、source-build で生成した
         // bindings.rs から src/lib.rs が使用するシンボルとその依存を抽出したもの。
-        // 定数値は libaom v3.14.1 の実値を反映している。
+        // 定数値は libaom v3.15.1 の実値を反映している。
         //
         // 参照: https://docs.rs/about/builds
         //
@@ -275,6 +275,11 @@ fn build_from_source(out_dir: &Path, output_bindings_path: &Path) -> PathBuf {
     cmake_config
         .define("BUILD_SHARED_LIBS", "OFF")
         .define("ENABLE_TESTS", "OFF")
+        // aomenc / aomdec は不要なため無効化する。
+        // 根拠: libaom v3.15.0 で ENABLE_APPS (aomenc / aomdec 用) が追加され、
+        // ENABLE_EXAMPLES はサンプルプログラムのみをビルドする意味に再定義された。
+        // v3.14.1 以前は ENABLE_EXAMPLES が aomenc / aomdec も制御していた。
+        .define("ENABLE_APPS", "OFF")
         .define("ENABLE_EXAMPLES", "OFF")
         .define("ENABLE_TOOLS", "OFF")
         .define("ENABLE_DOCS", "OFF")
@@ -329,9 +334,6 @@ fn configure_mobile_build(config: &mut shiguredo_cmake::Config) -> Vec<String> {
                     "aarch64-apple-ios-sim" => {
                         ("iphonesimulator", "arm64", "-simulator", "arm64", "14.0")
                     }
-                    "x86_64-apple-ios" => {
-                        ("iphonesimulator", "x86_64", "-simulator", "x86_64", "13.0")
-                    }
                     _ => panic!("unsupported iOS target: {target}"),
                 };
             let deployment_target = env::var("IPHONEOS_DEPLOYMENT_TARGET")
@@ -349,7 +351,7 @@ fn configure_mobile_build(config: &mut shiguredo_cmake::Config) -> Vec<String> {
             // libaom の CMake は AOM_TARGET_SYSTEM が Darwin のときだけ ARM アセンブリの
             // コンパイラと x86_64 の NASM オブジェクト形式 (macho64) を切り替える。
             // iOS でも Darwin として構成し、SDK とアーキテクチャで対象を分ける。
-            // 根拠: libaom v3.14.1 の cmake/aom_configure.cmake と cmake/aom_optimization.cmake。
+            // 根拠: libaom v3.15.1 の cmake/aom_configure.cmake と cmake/aom_optimization.cmake。
             // 実装は将来変更される可能性がある。
             //
             // cc クレートの既定フラグと CMake の SDK 選択が競合しないよう、
@@ -362,7 +364,7 @@ fn configure_mobile_build(config: &mut shiguredo_cmake::Config) -> Vec<String> {
                 .define("CMAKE_OSX_DEPLOYMENT_TARGET", &deployment_target)
                 // Darwin ホストでは CMAKE_SYSTEM_NAME が同じでも CMAKE_SYSTEM_PROCESSOR が
                 // 空になり、libaom が CPU を generic と判定して SIMD が無効になる。
-                // 根拠: libaom v3.14.1 の cmake/aom_configure.cmake の CPU 判定。
+                // 根拠: libaom v3.15.1 の cmake/aom_configure.cmake の CPU 判定。
                 // 実装は将来変更される可能性がある。
                 .define("AOM_TARGET_CPU", aom_target_cpu);
 
@@ -795,7 +797,6 @@ fn get_target_platform() -> String {
         return match rust_target.as_str() {
             "aarch64-apple-ios" => "ios_arm64",
             "aarch64-apple-ios-sim" => "ios-sim_arm64",
-            "x86_64-apple-ios" => "ios-sim_x86_64",
             "aarch64-linux-android" => "android_arm64",
             "x86_64-linux-android" => "android_x86_64",
             _ => panic!("unsupported mobile target: {rust_target}"),
