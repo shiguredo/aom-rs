@@ -10,8 +10,8 @@ description: 時雨堂の libaom (AV1) Rust バインディング shiguredo_aom 
 ## バージョン情報
 
 - crate 名: `shiguredo_aom`
-- バージョン: 2026.2.0
-- libaom バージョン: v3.14.1
+- バージョン: 2026.3.0
+- libaom バージョン: v3.15.1
 - Rust Edition: 2024
 - 最小 Rust バージョン: 1.93
 - ライセンス: Apache-2.0
@@ -32,6 +32,8 @@ GitHub Releases から prebuilt バイナリをダウンロードしてリンク
 - Ubuntu 26.04 / 24.04 / 22.04 (x86_64, arm64)
 - macOS 26 / 15 (arm64)
 - Windows 11 / Windows Server 2025 (x86_64)
+- iOS 13.0 以降 (実機 arm64)、iOS 14.0 以降 (シミュレーター arm64)
+- Android API level 21 以降 (arm64-v8a / x86_64)
 
 `LIBAOM_TARGET` 環境変数で prebuilt バイナリのプラットフォーム名を明示指定できる。
 
@@ -51,6 +53,8 @@ brew install nasm
 # Windows
 choco install nasm
 ```
+
+iOS では Xcode の SDK、Android では Android NDK を使う。最小 OS バージョンは iOS が `IPHONEOS_DEPLOYMENT_TARGET` (未指定時は実機が 13.0、arm64 シミュレーターが 14.0)、Android が `ANDROID_PLATFORM` (未指定時は 21) で指定する。
 
 ### docs.rs 向け
 

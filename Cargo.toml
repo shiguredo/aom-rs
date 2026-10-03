@@ -1,6 +1,6 @@
 [package]
 name = "shiguredo_aom"
-version = "2026.2.0"
+version = "2026.3.0"
 edition = "2024"
 rust-version = "1.93"
 description = "Rust bindings for AOM (Alliance for Open Media) codec library"
@@ -15,7 +15,7 @@ include = ["/LICENSE", "/README.md", "/build.rs", "/build/**/*", "/src/**/*"]
 # (この内容は build.rs の中からのみ参照される)
 [package.metadata.external-dependencies.aom]
 url = "https://aomedia.googlesource.com/aom"
-version = "v3.14.1"
+version = "v3.15.1"
 
 [workspace]
 members = ["pbt"]
@@ -25,6 +25,8 @@ members = ["pbt"]
 [build-dependencies]
 # libaom ヘッダから Rust FFI バインディングを生成する
 bindgen = "0.72"
+# cmake クレートのコンパイラ判定に Android NDK の C / C++ コンパイラを指定する
+cc = "1.4"
 # libaom を CMake でビルドする
 shiguredo_cmake = "4.4"
 # package.metadata.external-dependencies を読む
