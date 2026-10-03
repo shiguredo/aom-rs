@@ -10,8 +10,8 @@ description: 時雨堂の libaom (AV1) Rust バインディング shiguredo_aom 
 ## バージョン情報
 
 - crate 名: `shiguredo_aom`
-- バージョン: 2026.2.0
-- libaom バージョン: v3.14.1
+- バージョン: 2026.3.0
+- libaom バージョン: v3.15.1
 - Rust Edition: 2024
 - 最小 Rust バージョン: 1.93
 - ライセンス: Apache-2.0
