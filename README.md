@@ -89,12 +89,10 @@ Cargo のターゲットに応じて、以下のアーカイブを自動選択�
 | --- | --- | --- |
 | iOS 実機 arm64 | `aarch64-apple-ios` | `libaom-ios_arm64.tar.gz` |
 | iOS シミュレーター arm64 | `aarch64-apple-ios-sim` | `libaom-ios-sim_arm64.tar.gz` |
-| iOS シミュレーター x86_64 | `x86_64-apple-ios` | `libaom-ios-sim_x86_64.tar.gz` |
 | Android arm64-v8a | `aarch64-linux-android` | `libaom-android_arm64.tar.gz` |
 | Android x86_64 | `x86_64-linux-android` | `libaom-android_x86_64.tar.gz` |
 
-prebuilt の対象は iOS 13.0 以降、Android API level 21 以降です。
-arm64 の iOS シミュレーターは iOS 14.0 以降を対象とします。
+prebuilt の対象は iOS 実機が 13.0 以降、iOS シミュレーターが 14.0 以降、Android が API level 21 以降です。
 モバイル向けの成果物は、対応を追加したバージョンの GitHub Release から提供します。
 
 ```bash
@@ -117,7 +115,7 @@ cargo build --features source-build
 
 iOS では、Xcode の SDK を使って実機とシミュレーターをビルドします。
 最小バージョンは `IPHONEOS_DEPLOYMENT_TARGET` で指定できます。
-未指定の場合は arm64 シミュレーターが `14.0`、実機と x86_64 シミュレーターが `13.0` です。
+未指定の場合は実機が `13.0`、arm64 シミュレーターが `14.0` です。
 
 ```bash
 IPHONEOS_DEPLOYMENT_TARGET=13.0 cargo build --target aarch64-apple-ios --features source-build

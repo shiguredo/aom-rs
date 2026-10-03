@@ -334,9 +334,6 @@ fn configure_mobile_build(config: &mut shiguredo_cmake::Config) -> Vec<String> {
                     "aarch64-apple-ios-sim" => {
                         ("iphonesimulator", "arm64", "-simulator", "arm64", "14.0")
                     }
-                    "x86_64-apple-ios" => {
-                        ("iphonesimulator", "x86_64", "-simulator", "x86_64", "13.0")
-                    }
                     _ => panic!("unsupported iOS target: {target}"),
                 };
             let deployment_target = env::var("IPHONEOS_DEPLOYMENT_TARGET")
@@ -800,7 +797,6 @@ fn get_target_platform() -> String {
         return match rust_target.as_str() {
             "aarch64-apple-ios" => "ios_arm64",
             "aarch64-apple-ios-sim" => "ios-sim_arm64",
-            "x86_64-apple-ios" => "ios-sim_x86_64",
             "aarch64-linux-android" => "android_arm64",
             "x86_64-linux-android" => "android_x86_64",
             _ => panic!("unsupported mobile target: {rust_target}"),
